@@ -1,11 +1,12 @@
-"""Download pre-trained weights and export them to ONNX.
+"""Download pre-trained weights, export to ONNX, and generate preview thumbnails.
 
 Downloads .pth files from yakhyo/fast-neural-style-transfer (GitHub release v1.0),
-then exports each to an ONNX model consumable by StyleTransferEngine.
+exports each to an ONNX model, then runs a small content image through each model
+to produce a preview.jpg thumbnail shown in the gallery.
 
 Usage::
 
-    python scripts/setup_models.py            # download + export all
+    python scripts/setup_models.py            # download + export + preview all
     python scripts/setup_models.py --dry-run  # print what would happen
 """
 from __future__ import annotations
@@ -21,6 +22,12 @@ from pathlib import Path
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 STYLES_ROOT: Path = PROJECT_ROOT / "styles"
 TMP_DIR: Path = PROJECT_ROOT / ".model_cache"
+
+# Sample content image used to render the style previews
+# https://picsum.photos uses the same seed → same image every time (CC0)
+PREVIEW_CONTENT_URL: str = "https://picsum.photos/seed/style42/512/512"
+PREVIEW_CONTENT_PATH: Path = TMP_DIR / "preview_content.jpg"
+PREVIEW_SIZE: int = 256  # size of generated preview thumbnail
 
 # Ensure project root is on sys.path so `src` is importable
 if str(PROJECT_ROOT) not in sys.path:
@@ -144,6 +151,41 @@ def _export(pth_path: Path, onnx_path: Path, *, dry_run: bool) -> None:
     print(f"  [ok]       {onnx_path}")
 
 
+def _generate_preview(onnx_path: Path, preview_path: Path, content_path: Path, *, dry_run: bool) -> None:
+    """Run *onnx_path* on *content_path* and save a thumbnail to *preview_path*."""
+    if preview_path.exists():
+        print(f"  [skip]     {preview_path.name} already exists")
+        return
+    if not onnx_path.exists():
+        print(f"  [skip]     ONNX model not found; cannot generate preview")
+        return
+    print(f"  [preview]  {onnx_path.name} → {preview_path.name}")
+    if dry_run:
+        return
+
+    import numpy as np  # noqa: PLC0415
+    import onnxruntime as ort  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
+
+    # Load and pre-process content image
+    img = Image.open(content_path).convert("RGB").resize((PREVIEW_SIZE, PREVIEW_SIZE))
+    arr = np.array(img, dtype=np.float32)          # HWC, [0,255]
+    arr = arr.transpose(2, 0, 1)[np.newaxis]       # 1CHW, [0,255]
+
+    # Run inference
+    sess = ort.InferenceSession(
+        str(onnx_path),
+        providers=["DmlExecutionProvider", "CPUExecutionProvider"],
+    )
+    out = sess.run(None, {sess.get_inputs()[0].name: arr})[0]  # 1CHW
+
+    # Post-process and save
+    out = np.clip(out[0].transpose(1, 2, 0), 0, 255).astype(np.uint8)  # HWC
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(out).save(str(preview_path), quality=85)
+    print(f"  [ok]       {preview_path}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -158,16 +200,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print("** DRY RUN — no files will be written **\n")
 
+    # Download shared content image for previews once
+    _download(PREVIEW_CONTENT_URL, PREVIEW_CONTENT_PATH, dry_run=args.dry_run)
+
     for model in MODELS:
         style_id: str = model["id"]
         pth_name: str = model["pth"]
         url: str = f"{YAKHYO_BASE}/{pth_name}"
         pth_path: Path = TMP_DIR / pth_name
         onnx_path: Path = STYLES_ROOT / style_id / "model.onnx"
+        preview_path: Path = STYLES_ROOT / style_id / "preview.jpg"
 
         print(f"\n[{style_id}]")
         _download(url, pth_path, dry_run=args.dry_run)
         _export(pth_path, onnx_path, dry_run=args.dry_run)
+        _generate_preview(onnx_path, preview_path, PREVIEW_CONTENT_PATH, dry_run=args.dry_run)
 
     print("\nDone.")
     return 0

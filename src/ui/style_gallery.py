@@ -30,12 +30,19 @@ from src.ui.widgets.thumbnail_delegate import ThumbnailDelegate
 logger: logging.Logger = logging.getLogger(__name__)
 
 _PLACEHOLDER_SIZE: int = 128
+_PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 
 
 def _load_pixmap(path: Path | str | None) -> QPixmap:
-    """Return a QPixmap from *path*, or a grey placeholder on failure."""
+    """Return a QPixmap from *path*, or a grey placeholder on failure.
+
+    Relative paths are resolved against the project root so the gallery
+    works regardless of the process working directory.
+    """
     if path:
         resolved = Path(path) if isinstance(path, str) else path
+        if not resolved.is_absolute():
+            resolved = _PROJECT_ROOT / resolved
         if resolved.exists():
             pix = QPixmap(str(resolved))
             if not pix.isNull():
