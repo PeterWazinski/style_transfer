@@ -6,6 +6,8 @@ Style loss  : MSE of Gram matrices at relu1_2, relu2_2, relu3_3, relu4_3
 """
 from __future__ import annotations
 
+from typing import cast
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -51,7 +53,7 @@ class VGGFeatureExtractor(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
-        vgg: nn.Sequential = models.vgg16(weights=VGG16_Weights.DEFAULT).features
+        vgg: nn.Sequential = cast(nn.Sequential, models.vgg16(weights=VGG16_Weights.DEFAULT).features)
         # Freeze all parameters
         for param in vgg.parameters():
             param.requires_grad_(False)

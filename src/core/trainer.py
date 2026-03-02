@@ -211,7 +211,7 @@ class StyleTrainer:
                 "output": {0: "batch", 2: "height", 3: "width"},
             },
             do_constant_folding=True,
-            dynamo=False,  # use the stable legacy exporter
+            dynamo=False,  # type: ignore[call-arg]  # use the stable legacy exporter; stubs lag behind
         )
         logger.info("ONNX model exported to %s", onnx_path)
         return onnx_path

@@ -192,7 +192,7 @@ class StyleTransferEngine:
         w, h = content_image.size
         scale = min(1.0, max_dim / max(w, h))
         small = content_image.resize(
-            (int(w * scale), int(h * scale)), Image.LANCZOS
+            (int(w * scale), int(h * scale)), Image.Resampling.LANCZOS
         )
         return self.apply(
             small,
