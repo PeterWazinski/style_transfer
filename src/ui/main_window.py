@@ -37,7 +37,9 @@ from src.core.engine import StyleTransferEngine
 from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.registry import StyleNotFoundError, StyleRegistry
+from src.core.settings import AppSettings
 from src.ui.photo_canvas import PhotoCanvasView
+from src.ui.settings_dialog import SettingsDialog
 from src.ui.style_editor import StyleEditorDialog
 from src.ui.style_gallery import StyleGalleryView
 from src.ui.training_dialog import TrainingProgressDialog
@@ -52,6 +54,7 @@ class MainWindow(QMainWindow):
         registry:      Injected :class:`StyleRegistry` instance.
         engine:        Injected :class:`StyleTransferEngine` instance.
         photo_manager: Injected :class:`PhotoManager` instance.
+        settings:      Application settings; defaults are used if *None*.
         parent:        Optional parent widget.
     """
 
@@ -60,6 +63,7 @@ class MainWindow(QMainWindow):
         registry: StyleRegistry,
         engine: StyleTransferEngine,
         photo_manager: PhotoManager,
+        settings: Optional[AppSettings] = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -71,6 +75,7 @@ class MainWindow(QMainWindow):
         self._registry = registry
         self._engine = engine
         self._photo_manager = photo_manager
+        self._settings: AppSettings = settings or AppSettings.load()
         self._current_photo: Optional[PILImage] = None
         self._current_photo_path: Optional[Path] = None
         self._styled_photo: Optional[PILImage] = None
@@ -135,7 +140,12 @@ class MainWindow(QMainWindow):
         add_style_action = QAction("Add Style…", self)
         add_style_action.triggered.connect(self._open_add_style_dialog)
         styles_menu.addAction(add_style_action)
-
+        # Tools menu
+        tools_menu = mb.addMenu("Tools")
+        settings_action = QAction("Settings\u2026", self)
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self._open_settings_dialog)
+        tools_menu.addAction(settings_action)
         # Help menu
         help_menu = mb.addMenu("Help")
         about_action = QAction("About…", self)
@@ -204,7 +214,12 @@ class MainWindow(QMainWindow):
         self._status.showMessage("Applying style…")
         try:
             result = self._engine.apply(
-                self._current_photo, style_id, strength=strength
+                self._current_photo,
+                style_id,
+                strength=strength,
+                tile_size=self._settings.tile_size,
+                overlap=self._settings.overlap,
+                use_float16=self._settings.use_float16,
             )
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Apply Error", str(exc))
@@ -218,10 +233,11 @@ class MainWindow(QMainWindow):
     def _save_result(self) -> None:
         if self._styled_photo is None:
             return
+        start_dir = self._settings.default_output_dir or ""
         path_str, _ = QFileDialog.getSaveFileName(
             self,
             "Save Result",
-            "",
+            start_dir,
             "JPEG (*.jpg);;PNG (*.png)",
         )
         if not path_str:
@@ -291,6 +307,15 @@ class MainWindow(QMainWindow):
             "<em>yakhyo/fast-neural-style-transfer</em> (MIT)<br>"
             "<em>igreat/fast-style-transfer</em> (MIT)<br>",
         )
+
+    def _open_settings_dialog(self) -> None:
+        dlg = SettingsDialog(settings=self._settings, parent=self)
+        dlg.settings_changed.connect(self._on_settings_changed)
+        dlg.exec()
+
+    def _on_settings_changed(self, new_settings: AppSettings) -> None:
+        self._settings = new_settings
+        self._status.showMessage("Settings saved.")
 
     # ------------------------------------------------------------------
     # Helpers

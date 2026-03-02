@@ -24,6 +24,27 @@ class StyleModelNotFoundError(FileNotFoundError):
     """Raised when a requested style model file cannot be found."""
 
 
+class CorruptModelError(RuntimeError):
+    """Raised when an ONNX model file exists but cannot be parsed."""
+
+
+class OOMError(MemoryError):
+    """Raised when there is insufficient memory to process a tile."""
+
+
+# Valid ONNX Runtime execution-provider stacks.
+_PROVIDER_STACKS: dict[str, list[str]] = {
+    "auto": [
+        "DmlExecutionProvider",
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider",
+    ],
+    "dml":  ["DmlExecutionProvider",  "CPUExecutionProvider"],
+    "cuda": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+    "cpu":  ["CPUExecutionProvider"],
+}
+
+
 class StyleTransferEngine:
     """Pure-Python inference engine. No Qt dependency.
 
@@ -34,7 +55,19 @@ class StyleTransferEngine:
         result = engine.apply(photo, "candy", strength=0.8)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, execution_provider: str = "auto") -> None:
+        """Create the engine.
+
+        Args:
+            execution_provider: One of ``"auto"``, ``"cpu"``, ``"dml"``,
+                                ``"cuda"``.
+        """
+        if execution_provider not in _PROVIDER_STACKS:
+            raise ValueError(
+                f"execution_provider must be one of "
+                f"{list(_PROVIDER_STACKS)}, got {execution_provider!r}"
+            )
+        self._execution_provider: str = execution_provider
         self._sessions: dict[str, "ort.InferenceSession"] = {}
 
     # ------------------------------------------------------------------
@@ -62,15 +95,16 @@ class StyleTransferEngine:
                 f"ONNX model not found: {model_path}"
             )
 
-        providers: list[str] = [
-            "DmlExecutionProvider",   # Intel Arc / AMD via DirectML on Windows
-            "CUDAExecutionProvider",  # Nvidia (if available)
-            "CPUExecutionProvider",   # fallback
-        ]
-        session: ort.InferenceSession = ort.InferenceSession(
-            str(model_path),
-            providers=providers,
-        )
+        providers: list[str] = _PROVIDER_STACKS[self._execution_provider]
+        try:
+            session: ort.InferenceSession = ort.InferenceSession(
+                str(model_path),
+                providers=providers,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise CorruptModelError(
+                f"Failed to load ONNX model '{model_path}': {exc}"
+            ) from exc
         self._sessions[style_id] = session
         logger.info("Loaded model '%s' from %s", style_id, model_path)
 
@@ -85,21 +119,36 @@ class StyleTransferEngine:
         self,
         session: "ort.InferenceSession",
         tile: Image.Image,
+        *,
+        use_float16: bool = False,
     ) -> Image.Image:
         """Run one tile through the ONNX session.
 
         Args:
-            session: Active onnxruntime session.
-            tile:    RGB PIL image of any size supported by the model.
+            session:     Active onnxruntime session.
+            tile:        RGB PIL image of any size supported by the model.
+            use_float16: If True, cast the input tensor to float16 before
+                         sending to the runtime (faster on GPU/DML).
 
         Returns:
             Styled PIL image, same size as input tile.
+
+        Raises:
+            OOMError: If there is insufficient memory to allocate tile buffers.
         """
-        arr = np.array(tile.convert("RGB"), dtype=np.float32)
-        # Shape: [1, 3, H, W]
-        tensor = arr.transpose(2, 0, 1)[np.newaxis, ...] 
-        input_name: str = session.get_inputs()[0].name
-        output: list[np.ndarray] = session.run(None, {input_name: tensor})
+        try:
+            arr = np.array(tile.convert("RGB"), dtype=np.float32)
+            # Shape: [1, 3, H, W]
+            tensor: np.ndarray = arr.transpose(2, 0, 1)[np.newaxis, ...]
+            if use_float16:
+                tensor = tensor.astype(np.float16)
+            input_name: str = session.get_inputs()[0].name
+            output: list[np.ndarray] = session.run(None, {input_name: tensor})
+        except MemoryError as exc:
+            raise OOMError(
+                f"Out of memory processing a tile of size {tile.size}. "
+                "Try reducing tile_size in Settings."
+            ) from exc
         styled = np.clip(output[0][0].transpose(1, 2, 0), 0, 255).astype(np.uint8)
         return Image.fromarray(styled)
 
@@ -114,6 +163,7 @@ class StyleTransferEngine:
         strength: float = 1.0,
         tile_size: int = 1024,
         overlap: int = 128,
+        use_float16: bool = False,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> Image.Image:
         """Apply style transfer to *content_image* (full resolution).
@@ -129,6 +179,7 @@ class StyleTransferEngine:
                                0 = original, 1 = fully styled.
             tile_size:         Tile dimension in pixels (default 1024).
             overlap:           Overlap border in pixels (default 128).
+            use_float16:       Cast input tiles to float16 (faster on GPU).
             progress_callback: Optional callable(done, total) for progress.
 
         Returns:
@@ -155,7 +206,7 @@ class StyleTransferEngine:
         total: int = len(tiles)
         for i, (info, tile) in enumerate(tiles):
             logger.debug("Processing tile %d/%d", i + 1, total)
-            styled_tile = self._infer_tile(session, tile)
+            styled_tile = self._infer_tile(session, tile, use_float16=use_float16)
             styled_tiles.append((info, styled_tile))
             if progress_callback is not None:
                 progress_callback(i + 1, total)

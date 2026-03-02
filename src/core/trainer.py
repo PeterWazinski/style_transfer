@@ -25,6 +25,10 @@ from src.ml.vgg_loss import VGGPerceptualLoss
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+class COCODatasetNotFoundError(FileNotFoundError):
+    """Raised when the MS-COCO dataset directory is absent or contains no images."""
+
+
 def _resolve_device(device_str: str) -> torch.device:
     if device_str == "auto":
         if torch.cuda.is_available():
@@ -120,6 +124,12 @@ class StyleTrainer:
         style_grams = loss_fn.compute_style_grams(style_tensor)
 
         # --- Dataset ---
+        if not coco_dataset_path.exists():
+            raise COCODatasetNotFoundError(
+                f"COCO dataset directory not found: {coco_dataset_path}\n"
+                "Download the MS-COCO 2017 training set and point the training "
+                "dialog to the correct path."
+            )
         dataset = CocoImageDataset(coco_dataset_path, image_size=image_size)
         loader = DataLoader(
             dataset,
