@@ -74,17 +74,18 @@ class StyleTransferEngine:
     # Model management
     # ------------------------------------------------------------------
 
-    def load_model(self, style_id: str, model_path: Path) -> None:
+    def load_model(self, style_id: str, model_path: Path | str) -> None:
         """Load an ONNX model and register it under *style_id*.
 
         Args:
             style_id:   Unique identifier (e.g. "candy").
-            model_path: Path to the .onnx file.
+            model_path: Path (or str) to the .onnx file.
 
         Raises:
             StyleModelNotFoundError: If the file does not exist.
             ImportError: If onnxruntime is not installed.
         """
+        model_path = Path(model_path)  # coerce str → Path
         if not _ORT_AVAILABLE:
             raise ImportError(
                 "onnxruntime is not installed. "

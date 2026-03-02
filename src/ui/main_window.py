@@ -177,9 +177,13 @@ class MainWindow(QMainWindow):
         self._status.showMessage(f"Style selected: {style.name}")
         # Preload ONNX if not already loaded
         if not self._engine.is_loaded(style.id):
+            # model_path is stored as a str relative to the project root
+            project_root: Path = Path(__file__).parent.parent.parent
+            model_path: Path = style.model_path_resolved(project_root)
             try:
-                self._engine.load_model(style.id, style.model_path)
+                self._engine.load_model(style.id, model_path)
             except Exception as exc:  # noqa: BLE001
+                logger.exception("Could not load model '%s' from %s", style.id, model_path)
                 self._status.showMessage(f"Could not load model: {exc}")
 
     def _open_photo(self) -> None:
