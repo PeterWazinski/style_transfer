@@ -19,14 +19,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QRectF, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QColor, QCursor, QPainter, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QGraphicsPixmapItem,
-    QGraphicsScene,
-    QGraphicsView,
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
@@ -39,10 +36,12 @@ from src.ui.widgets.strength_slider import StrengthSlider
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-class PhotoSplitView(QGraphicsView):
-    """QGraphicsView subclass that shows original (left) and styled (right) image.
+class PhotoSplitView(QWidget):
+    """Widget that composites original (left) and styled (right) images.
 
-    A draggable vertical white dashed line separates the two halves.
+    The styled image is clipped to the right half of the widget so that
+    dragging the divider reveals more or less of each version — a classic
+    before/after comparison view.
 
     Signals:
         split_ratio_changed(float): Emitted when the divider moves (0.0 – 1.0).
@@ -51,16 +50,15 @@ class PhotoSplitView(QGraphicsView):
     split_ratio_changed: Signal = Signal(float)
 
     _GRAB_TOLERANCE: int = 8  # px around the divider that counts as a grab
+    _BG_COLOR: QColor = QColor("#1e1e1e")
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._split_ratio: float = 0.5
         self._dragging: bool = False
-
+        self._original_pixmap: QPixmap = QPixmap()
+        self._styled_pixmap: QPixmap = QPixmap()
         self.setMouseTracking(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # type: ignore[attr-defined]
-        self.setRenderHint(QPainter.SmoothPixmapTransform)  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
     # Public
@@ -73,14 +71,39 @@ class PhotoSplitView(QGraphicsView):
     def set_split_ratio(self, ratio: float) -> None:
         """Set divider position; clamps to ``[0.0, 1.0]``."""
         self._split_ratio = max(0.0, min(1.0, ratio))
-        self.viewport().update()
+        self.update()
+
+    def set_original_pixmap(self, pixmap: QPixmap) -> None:
+        """Set the original (left) image."""
+        self._original_pixmap = pixmap
+        self.update()
+
+    def set_styled_pixmap(self, pixmap: QPixmap) -> None:
+        """Set the styled (right) image."""
+        self._styled_pixmap = pixmap
+        self.update()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _divider_x(self) -> int:
+        return int(self.width() * self._split_ratio)
+
+    def _draw_pixmap_scaled(self, painter: QPainter, pixmap: QPixmap) -> None:
+        """Draw *pixmap* scaled-to-fit and centred inside the widget."""
+        scaled = pixmap.scaled(
+            self.width(), self.height(),
+            Qt.KeepAspectRatio,  # type: ignore[attr-defined]
+            Qt.SmoothTransformation,  # type: ignore[attr-defined]
+        )
+        ox = (self.width() - scaled.width()) // 2
+        oy = (self.height() - scaled.height()) // 2
+        painter.drawPixmap(ox, oy, scaled)
 
     # ------------------------------------------------------------------
     # Mouse handling
     # ------------------------------------------------------------------
-
-    def _divider_x(self) -> int:
-        return int(self.viewport().width() * self._split_ratio)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         if abs(event.position().x() - self._divider_x()) <= self._GRAB_TOLERANCE:
@@ -89,11 +112,10 @@ class PhotoSplitView(QGraphicsView):
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-        w = self.viewport().width()
         near_divider = abs(event.position().x() - self._divider_x()) <= self._GRAB_TOLERANCE
         self.setCursor(QCursor(Qt.SplitHCursor if near_divider else Qt.ArrowCursor))  # type: ignore[attr-defined]
-        if self._dragging and w > 0:
-            self.set_split_ratio(event.position().x() / w)
+        if self._dragging and self.width() > 0:
+            self.set_split_ratio(event.position().x() / self.width())
             self.split_ratio_changed.emit(self._split_ratio)
         else:
             super().mouseMoveEvent(event)
@@ -107,14 +129,27 @@ class PhotoSplitView(QGraphicsView):
     # ------------------------------------------------------------------
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
-        super().paintEvent(event)
-        if not self.scene():
-            return
-        painter = QPainter(self.viewport())
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)  # type: ignore[attr-defined]
+        painter.fillRect(self.rect(), self._BG_COLOR)
+
+        # Draw original image across full width
+        if not self._original_pixmap.isNull():
+            self._draw_pixmap_scaled(painter, self._original_pixmap)
+
+        # Draw styled image clipped to the right of the divider
+        if not self._styled_pixmap.isNull():
+            x = self._divider_x()
+            painter.save()
+            painter.setClipRect(x, 0, self.width() - x, self.height())
+            self._draw_pixmap_scaled(painter, self._styled_pixmap)
+            painter.restore()
+
+        # Draw divider line
         pen = QPen(QColor("#ffffff"), 2, Qt.DashLine)  # type: ignore[attr-defined]
         painter.setPen(pen)
         x = self._divider_x()
-        painter.drawLine(x, 0, x, self.viewport().height())
+        painter.drawLine(x, 0, x, self.height())
         painter.end()
 
 
@@ -146,18 +181,9 @@ class PhotoCanvasView(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
 
-        # Scene + split view
-        self._scene = QGraphicsScene(self)
         self.split_view = PhotoSplitView(self)
-        self.split_view.setScene(self._scene)
-        self.split_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.split_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # type: ignore[attr-defined]
         root.addWidget(self.split_view)
-
-        # Pixmap graphics items
-        self._original_item = QGraphicsPixmapItem()
-        self._styled_item = QGraphicsPixmapItem()
-        self._scene.addItem(self._original_item)
-        self._scene.addItem(self._styled_item)
 
         # Controls row
         ctrl = QHBoxLayout()
@@ -186,15 +212,13 @@ class PhotoCanvasView(QWidget):
 
     def set_original(self, pixmap: QPixmap) -> None:
         """Display *pixmap* as the original (left) layer."""
-        self._original_item.setPixmap(pixmap)
-        self._scene.setSceneRect(self._original_item.boundingRect())
-        self.split_view.fitInView(self._scene.sceneRect(), Qt.KeepAspectRatio)  # type: ignore[attr-defined]
+        self.split_view.set_original_pixmap(pixmap)
         self._has_original = True
         self.apply_button.setEnabled(self._current_style_id is not None)
 
     def set_styled(self, pixmap: QPixmap) -> None:
         """Display *pixmap* as the styled (right) layer."""
-        self._styled_item.setPixmap(pixmap)
+        self.split_view.set_styled_pixmap(pixmap)
         self._has_styled = True
         self.save_button.setEnabled(True)
 
