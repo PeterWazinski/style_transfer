@@ -39,12 +39,21 @@ if str(PROJECT_ROOT) not in sys.path:
 YAKHYO_BASE: str = (
     "https://github.com/yakhyo/fast-neural-style-transfer/releases/download/v1.0"
 )
+IGREAT_BASE: str = (
+    "https://raw.githubusercontent.com/igreat/fast-style-transfer/main/saved_models"
+)
 
 MODELS: list[dict[str, str]] = [
     {"id": "candy",         "pth": "candy.pth"},
     {"id": "mosaic",        "pth": "mosaic.pth"},
     {"id": "rain_princess", "pth": "rain-princess.pth"},
     {"id": "abstract",      "pth": "udnie.pth"},   # GitHub release artifact: udnie.pth
+    {
+        "id":     "starry_night",
+        "pth":    "starry_night_pretrained.pth",
+        "url":    f"{IGREAT_BASE}/starry_night_pretrained.pth",
+        "source": "igreat",
+    },
 ]
 
 
@@ -60,7 +69,7 @@ def _download(url: str, dest: Path, *, dry_run: bool) -> None:
     print(f"  [ok]       saved to {dest}")
 
 
-def _export(pth_path: Path, onnx_path: Path, *, dry_run: bool) -> None:
+def _export(pth_path: Path, onnx_path: Path, *, dry_run: bool, source: str = "yakhyo") -> None:
     if onnx_path.exists():
         print(f"  [skip]     {onnx_path} already exists")
         return
@@ -131,10 +140,79 @@ def _export(pth_path: Path, onnx_path: Path, *, dry_run: bool) -> None:
     # Load weights and export to ONNX
     # ---------------------------------------------------------------------------
     device = torch.device("cpu")
-    net = TransformerNet().to(device)
-    ckpt = torch.load(str(pth_path), map_location=device, weights_only=False)
-    state = ckpt.get("model_state", ckpt)
-    net.load_state_dict(state)
+
+    if source == "igreat":
+        # --- igreat/fast-style-transfer architecture ---
+        # Uses nn.Sequential(.layers) with ConvLayer/ResidualBlock/UpsamplingConvLayer.
+        # Checkpoint keys: model_state_dict (training checkpoint format).
+        class _ConvLayer(nn.Module):
+            def __init__(self, in_ch: int, out_ch: int, k: int, s: int, p: int) -> None:
+                super().__init__()
+                self.reflection_pad = nn.ReflectionPad2d(p)
+                self.conv = nn.Conv2d(in_ch, out_ch, k, s)
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return self.conv(self.reflection_pad(x))
+
+        class _ResidualBlock(nn.Module):
+            def __init__(self, ch: int) -> None:
+                super().__init__()
+                self.conv1 = _ConvLayer(ch, ch, 3, 1, 1)
+                self.instance_norm1 = nn.InstanceNorm2d(ch, affine=True)
+                self.conv2 = _ConvLayer(ch, ch, 3, 1, 1)
+                self.instance_norm2 = nn.InstanceNorm2d(ch, affine=True)
+                self.relu = nn.ReLU()
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                out = self.relu(self.instance_norm1(self.conv1(x)))
+                return x + self.instance_norm2(self.conv2(out))
+
+        class _UpsamplingConvLayer(nn.Module):
+            def __init__(self, in_ch: int, out_ch: int, k: int, s: int, up: int) -> None:
+                super().__init__()
+                self.upsample = up
+                self.conv = _ConvLayer(in_ch, out_ch, k, s, k // 2)
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                x = nn.functional.interpolate(x, scale_factor=float(self.upsample), mode="nearest")
+                return self.conv(x)
+
+        class _IgreatNet(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.layers = nn.Sequential(
+                    _ConvLayer(3, 32, 9, 1, 4),           # 0
+                    nn.InstanceNorm2d(32, affine=True),    # 1
+                    nn.ReLU(),                             # 2
+                    _ConvLayer(32, 64, 3, 2, 1),           # 3
+                    nn.InstanceNorm2d(64, affine=True),    # 4
+                    nn.ReLU(),                             # 5
+                    _ConvLayer(64, 128, 3, 2, 1),          # 6
+                    nn.InstanceNorm2d(128, affine=True),   # 7
+                    nn.ReLU(),                             # 8
+                    _ResidualBlock(128),                   # 9
+                    _ResidualBlock(128),                   # 10
+                    _ResidualBlock(128),                   # 11
+                    _ResidualBlock(128),                   # 12
+                    _ResidualBlock(128),                   # 13
+                    _UpsamplingConvLayer(128, 64, 3, 1, 2),  # 14
+                    nn.InstanceNorm2d(64, affine=True),    # 15
+                    nn.ReLU(),                             # 16
+                    _UpsamplingConvLayer(64, 32, 3, 1, 2),   # 17
+                    nn.InstanceNorm2d(32, affine=True),    # 18
+                    nn.ReLU(),                             # 19
+                    _ConvLayer(32, 3, 9, 1, 4),            # 20
+                )
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return self.layers(x)
+
+        net = _IgreatNet().to(device)
+        ckpt = torch.load(str(pth_path), map_location=device, weights_only=False)
+        net.load_state_dict(ckpt["model_state_dict"])
+    else:
+        # --- yakhyo/fast-neural-style-transfer architecture (default) ---
+        net = TransformerNet().to(device)
+        ckpt = torch.load(str(pth_path), map_location=device, weights_only=False)
+        state = ckpt.get("model_state", ckpt)
+        net.load_state_dict(state)
+
     net.eval()
 
     onnx_path.parent.mkdir(parents=True, exist_ok=True)
@@ -206,14 +284,15 @@ def main(argv: list[str] | None = None) -> int:
     for model in MODELS:
         style_id: str = model["id"]
         pth_name: str = model["pth"]
-        url: str = f"{YAKHYO_BASE}/{pth_name}"
+        url: str = model.get("url") or f"{YAKHYO_BASE}/{pth_name}"
+        source: str = model.get("source", "yakhyo")
         pth_path: Path = TMP_DIR / pth_name
         onnx_path: Path = STYLES_ROOT / style_id / "model.onnx"
         preview_path: Path = STYLES_ROOT / style_id / "preview.jpg"
 
         print(f"\n[{style_id}]")
         _download(url, pth_path, dry_run=args.dry_run)
-        _export(pth_path, onnx_path, dry_run=args.dry_run)
+        _export(pth_path, onnx_path, dry_run=args.dry_run, source=source)
         _generate_preview(onnx_path, preview_path, PREVIEW_CONTENT_PATH, dry_run=args.dry_run)
 
     print("\nDone.")

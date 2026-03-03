@@ -35,6 +35,15 @@
       "model_path": "styles/abstract/model.onnx",
       "preview_path": "styles/abstract/preview.jpg",
       "is_builtin": true
+    },
+    {
+      "id": "starry_night",
+      "name": "Starry Night",
+      "description": "Van Gogh's swirling night sky",
+      "author": "igreat/fast-style-transfer",
+      "model_path": "styles/starry_night/model.onnx",
+      "preview_path": "styles/starry_night/preview.jpg",
+      "is_builtin": true
     }
   ]
 }
