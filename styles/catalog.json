@@ -28,12 +28,12 @@
       "is_builtin": true
     },
     {
-      "id": "udnie",
-      "name": "Udnie",
+      "id": "abstract",
+      "name": "Abstract",
       "description": "Abstract curved forms",
       "author": "yakhyo/fast-neural-style-transfer",
-      "model_path": "styles/udnie/model.onnx",
-      "preview_path": "styles/udnie/preview.jpg",
+      "model_path": "styles/abstract/model.onnx",
+      "preview_path": "styles/abstract/preview.jpg",
       "is_builtin": true
     }
   ]

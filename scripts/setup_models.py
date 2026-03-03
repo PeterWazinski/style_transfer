@@ -44,7 +44,7 @@ MODELS: list[dict[str, str]] = [
     {"id": "candy",         "pth": "candy.pth"},
     {"id": "mosaic",        "pth": "mosaic.pth"},
     {"id": "rain_princess", "pth": "rain-princess.pth"},
-    {"id": "udnie",         "pth": "udnie.pth"},
+    {"id": "abstract",      "pth": "udnie.pth"},   # GitHub release artifact: udnie.pth
 ]
 
 
