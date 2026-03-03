@@ -9,9 +9,11 @@ class StrengthSlider(QWidget):
     """Composite widget: ``Strength:``  [━━━●━━━]  ``75 %``
 
     Emits :attr:`value_changed` (float in ``[0.0, 1.0]``) on every slider move.
+    Emits :attr:`released` (no payload) when the user releases the slider handle.
     """
 
     value_changed: Signal = Signal(float)
+    released: Signal = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -40,6 +42,7 @@ class StrengthSlider(QWidget):
         layout.addWidget(self._pct_label)
 
         self._slider.valueChanged.connect(self._on_value_changed)
+        self._slider.sliderReleased.connect(self.released)
 
     # ------------------------------------------------------------------
     # Internal

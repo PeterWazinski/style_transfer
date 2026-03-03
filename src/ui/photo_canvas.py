@@ -205,6 +205,7 @@ class PhotoCanvasView(QWidget):
         self.open_button.clicked.connect(self.open_photo_requested)
         self.apply_button.clicked.connect(self._on_apply_clicked)
         self.save_button.clicked.connect(self.save_requested)
+        self.strength_slider.released.connect(self._on_strength_released)
 
     # ------------------------------------------------------------------
     # Public API
@@ -245,3 +246,8 @@ class PhotoCanvasView(QWidget):
                 self._current_style_id,
                 self.strength_slider.strength(),
             )
+
+    def _on_strength_released(self) -> None:
+        """Auto-apply when the user releases the strength slider (photo + style required)."""
+        if self._has_original and self._current_style_id:
+            self._on_apply_clicked()
