@@ -25,6 +25,7 @@ from PIL.Image import Image as PILImage
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QDockWidget,
     QFileDialog,
     QMainWindow,
@@ -216,6 +217,9 @@ class MainWindow(QMainWindow):
         if self._current_photo is None:
             return
         self._status.showMessage("Applying style…")
+        self.canvas.apply_button.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
+        QApplication.processEvents()  # flush cursor + status bar before blocking
         try:
             result = self._engine.apply(
                 self._current_photo,
@@ -229,6 +233,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Apply Error", str(exc))
             self._status.showMessage("Error during style transfer.")
             return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.canvas.apply_button.setEnabled(True)
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
         self._save_action.setEnabled(True)
