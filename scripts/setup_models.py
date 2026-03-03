@@ -206,6 +206,27 @@ def _export(pth_path: Path, onnx_path: Path, *, dry_run: bool, source: str = "ya
         net = _IgreatNet().to(device)
         ckpt = torch.load(str(pth_path), map_location=device, weights_only=False)
         net.load_state_dict(ckpt["model_state_dict"])
+
+        # Wrap with ImageNet pre/post-processing so the ONNX graph accepts
+        # [0, 255] input and produces [0, 255] output — identical contract to yakhyo.
+        _MEAN = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        _STD  = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+
+        class _NormalizedIgreat(nn.Module):
+            def __init__(self, inner: nn.Module) -> None:
+                super().__init__()
+                self.inner = inner
+                self.register_buffer("mean", _MEAN)
+                self.register_buffer("std",  _STD)
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                x = x / 255.0
+                x = (x - self.mean) / self.std
+                x = self.inner(x)
+                x = x * self.std + self.mean
+                x = x.clamp(0.0, 1.0)
+                return x * 255.0
+
+        net = _NormalizedIgreat(net).to(device)
     else:
         # --- yakhyo/fast-neural-style-transfer architecture (default) ---
         net = TransformerNet().to(device)
