@@ -160,6 +160,7 @@ class MainWindow(QMainWindow):
     def _wire_signals(self) -> None:
         # Gallery → canvas
         self.gallery.style_selected.connect(self._on_style_selected)
+        self.gallery.style_apply_requested.connect(self._on_style_apply_requested)
         # Gallery → dialogs
         self.gallery.add_requested.connect(self._open_add_style_dialog)
         self.gallery.edit_requested.connect(self._open_edit_style_dialog)
@@ -186,6 +187,12 @@ class MainWindow(QMainWindow):
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Could not load model '%s' from %s", style.id, model_path)
                 self._status.showMessage(f"Could not load model: {exc}")
+
+    def _on_style_apply_requested(self, style: StyleModel) -> None:
+        """Double-click on gallery thumbnail: select the style then apply immediately."""
+        self._on_style_selected(style)
+        if self._current_photo is not None:
+            self._apply_style(style.id, self.canvas.strength_slider.strength())
 
     def _open_photo(self) -> None:
         path_str, _ = QFileDialog.getOpenFileName(

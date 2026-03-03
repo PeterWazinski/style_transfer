@@ -56,13 +56,15 @@ class StyleGalleryView(QWidget):
     """Visual browser for the style catalog.
 
     Signals:
-        style_selected(StyleModel): Emitted when the user clicks a thumbnail.
-        add_requested():            "Add Style" button pressed.
-        edit_requested(str):        Right-click → Edit; carries ``style_id``.
-        delete_requested(str):      "Delete" button or right-click → Delete.
+        style_selected(StyleModel):       Emitted when the user clicks a thumbnail.
+        style_apply_requested(StyleModel): Emitted on double-click; owner should apply.
+        add_requested():                  "Add Style" button pressed.
+        edit_requested(str):              Right-click → Edit; carries ``style_id``.
+        delete_requested(str):            "Delete" button or right-click → Delete.
     """
 
-    style_selected: Signal = Signal(object)   # payload: StyleModel
+    style_selected: Signal = Signal(object)        # payload: StyleModel
+    style_apply_requested: Signal = Signal(object) # payload: StyleModel
     add_requested: Signal = Signal()
     edit_requested: Signal = Signal(str)
     delete_requested: Signal = Signal(str)
@@ -109,6 +111,7 @@ class StyleGalleryView(QWidget):
 
         # --- Connections ---
         self._list_view.clicked.connect(self._on_item_clicked)
+        self._list_view.doubleClicked.connect(self._on_item_double_clicked)
         self._list_view.customContextMenuRequested.connect(self._on_context_menu)
         self.add_button.clicked.connect(self.add_requested)
         self.delete_button.clicked.connect(self._on_delete_button_clicked)
@@ -157,6 +160,11 @@ class StyleGalleryView(QWidget):
         style: StyleModel | None = index.data(Qt.UserRole)  # type: ignore[attr-defined]
         if style:
             self.style_selected.emit(style)
+
+    def _on_item_double_clicked(self, index: QModelIndex) -> None:
+        style: StyleModel | None = index.data(Qt.UserRole)  # type: ignore[attr-defined]
+        if style:
+            self.style_apply_requested.emit(style)
 
     def _on_context_menu(self, pos: QPoint) -> None:
         index = self._list_view.indexAt(pos)
