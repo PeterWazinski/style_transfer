@@ -207,3 +207,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Style transfer model cache (large .pth files downloaded by setup_models.py)
+.model_cache/
