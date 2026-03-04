@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 # ---------------------------------------------------------------------------
@@ -25,9 +25,7 @@ class StyleModel:
     preview_path: str                               # relative path to thumbnail
     description: str = ""
     author: str = ""
-    source_images: list[str] = field(default_factory=list)  # style reference images
     is_builtin: bool = True
-    training_config: Optional[dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     # Convenience properties

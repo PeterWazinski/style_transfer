@@ -17,7 +17,7 @@ ort_datas    = collect_data_files("onnxruntime", include_py_files=False)
 ort_binaries = collect_dynamic_libs("onnxruntime")
 
 a = Analysis(
-    ["src/app.py"],
+    ["src/stylist/app.py"],
     pathex=["."],
     binaries=ort_binaries,
     datas=[
