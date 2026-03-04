@@ -45,7 +45,8 @@ def generate_preview(
         str(onnx_path),
         providers=["DmlExecutionProvider", "CPUExecutionProvider"],
     )
-    out = sess.run(None, {sess.get_inputs()[0].name: arr})[0]  # 1CHW
+    out_raw = sess.run(None, {sess.get_inputs()[0].name: arr})[0]  # 1CHW
+    out: np.ndarray = np.asarray(out_raw)  # cast from ort SparseTensor stub → ndarray
 
     # Post-process and save
     out = np.clip(out[0].transpose(1, 2, 0), 0, 255).astype(np.uint8)  # HWC
