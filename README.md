@@ -1,1 +1,89 @@
-# style_transfer
+# Peter's Picture Stylist
+
+A desktop app that applies the visual style of famous paintings to your photos using fast neural style transfer (Johnson et al., 2016).
+
+Inference runs entirely through ONNX Runtime — no GPU or Python knowledge required to use the compiled app.
+
+---
+
+## Features
+
+- **5 built-in styles** — Candy, Mosaic, Rain Princess, Abstract, Starry Night
+- **Tiled inference** — handles large photos without running out of memory
+- **Strength slider** — blend between original and styled result
+- **Portable exe** — single `PetersPictureStylist.exe`, no install needed
+- **Extensible** — train new styles on Kaggle (free GPU) and drop them in
+
+---
+
+## Quick Start (compiled exe)
+
+1. Download `dist\PetersPictureStylist.exe`
+2. Double-click — no Python or dependencies needed
+3. Open a photo · pick a style · click Apply · save the result
+
+---
+
+## Run from Source
+
+```powershell
+# 1. Create venv and install dependencies
+python -m venv .venv
+.venv\Scripts\pip install -e ".[stylist]"
+
+# 2. Launch
+.venv\Scripts\python.exe main_image_styler.py
+```
+
+---
+
+## Build the Exe
+
+```powershell
+.\compile.ps1        # produces dist\PetersPictureStylist.exe (~157 MB)
+```
+
+Requires PyInstaller in the venv (`pip install pyinstaller`). torch/torchvision are excluded — inference uses ONNX Runtime only.
+
+---
+
+## Train a New Style
+
+Training requires a GPU. The easiest free option is Kaggle (30 h/week GPU T4):
+
+1. Open `docs/kaggle_style_training.ipynb` in a Kaggle notebook
+2. Add the `awsaf49/coco-2017-dataset` input dataset and enable GPU T4
+3. Run all cells — training takes ~3 h for 2 epochs
+4. Download `model.onnx` + `preview.jpg` from the Output tab
+5. Place them in `styles/<your_id>/` and add an entry to `styles/catalog.json`
+
+---
+
+## Project Layout
+
+```
+src/
+  stylist/   Qt/PySide6 GUI app (no torch)
+  trainer/   Training pipeline (torch, dev only)
+  core/      Shared ONNX inference, registry, settings
+styles/      Pretrained ONNX models + catalog.json
+docs/        Architecture notes, Kaggle training notebook
+main_image_styler.py    → launch the app
+main_style_trainer.py   → train a new style (CLI)
+compile.ps1             → build the portable exe
+```
+
+---
+
+## Tests
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/ -k "not takes_long"   # ~6 s, 142 tests
+```
+
+---
+
+## Credits
+
+Pretrained models from [yakhyo/fast-neural-style-transfer](https://github.com/yakhyo/fast-neural-style-transfer) and [igreat/fast-style-transfer](https://github.com/igreat/fast-style-transfer) (both MIT).  
+Architecture based on Johnson et al., *Perceptual Losses for Real-Time Style Transfer*, 2016.
