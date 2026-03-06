@@ -65,22 +65,41 @@ class SettingsDialog(QDialog):
     # Construction
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _hint(self, text: str) -> QLabel:
+        """Return a small grey hint label for display below a form row."""
+        lbl = QLabel(f"<small style='color: grey;'>{text}</small>", self)
+        lbl.setWordWrap(True)
+        return lbl
+
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
 
         form = QFormLayout()
+        form.setVerticalSpacing(2)
 
         # --- Tile size ---
         self.tile_size_combo = QComboBox(self)
         for v in TILE_SIZE_CHOICES:
             self.tile_size_combo.addItem(f"{v} px", v)
         form.addRow("Tile size:", self.tile_size_combo)
+        form.addRow("", self._hint(
+            "Large photos are split into tiles of this size before processing. "
+            "Bigger tiles produce fewer seams but require more GPU memory."
+        ))
 
         # --- Overlap ---
         self.overlap_combo = QComboBox(self)
         for v in OVERLAP_CHOICES:
             self.overlap_combo.addItem(f"{v} px", v)
         form.addRow("Tile overlap:", self.overlap_combo)
+        form.addRow("", self._hint(
+            "Adjacent tiles overlap by this many pixels to hide stitching artefacts. "
+            "Increase if you see a grid pattern in the result."
+        ))
 
         # --- Default output directory ---
         output_row = QHBoxLayout()
@@ -91,6 +110,9 @@ class SettingsDialog(QDialog):
         output_row.addWidget(self.output_dir_edit, 1)
         output_row.addWidget(self.browse_output_btn)
         form.addRow("Default output folder:", output_row)
+        form.addRow("", self._hint(
+            "Pre-filled directory in the Save dialog. Leave empty to use the OS default."
+        ))
 
         # --- Execution provider ---
         self.provider_combo = QComboBox(self)
@@ -103,12 +125,20 @@ class SettingsDialog(QDialog):
         for key in PROVIDER_CHOICES:
             self.provider_combo.addItem(_PROVIDER_LABELS[key], key)
         form.addRow("Execution provider:", self.provider_combo)
+        form.addRow("", self._hint(
+            "Hardware back-end for ONNX inference. \"Auto\" tries the fastest "
+            "available device (DirectML → CUDA → CPU) automatically."
+        ))
 
         # --- Float16 ---
         self.float16_check = QCheckBox(
             "Float16 inference (faster on GPU/DML, slight quality trade-off)", self
         )
         form.addRow("", self.float16_check)
+        form.addRow("", self._hint(
+            "Halves the numeric precision of tensors sent to the GPU. "
+            "Reduces VRAM usage and speeds up rendering. Has no effect on CPU-only runtimes."
+        ))
 
         root.addLayout(form)
 

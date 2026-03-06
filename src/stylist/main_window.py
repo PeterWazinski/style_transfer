@@ -128,20 +128,24 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self._save_action)
 
         file_menu.addSeparator()
+        settings_action = QAction("Settings\u2026", self)
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self._open_settings_dialog)
+        file_menu.addAction(settings_action)
+
+        file_menu.addSeparator()
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-
-        # Tools menu
-        tools_menu = mb.addMenu("Tools")
-        settings_action = QAction("Settings\u2026", self)
-        settings_action.setShortcut("Ctrl+,")
-        settings_action.triggered.connect(self._open_settings_dialog)
-        tools_menu.addAction(settings_action)
         # Help menu
         help_menu = mb.addMenu("Help")
-        about_action = QAction("About…", self)
+        about_nst_action = QAction("About Neural Style Transfer\u2026", self)
+        about_nst_action.triggered.connect(self._show_about_nst)
+        help_menu.addAction(about_nst_action)
+
+        help_menu.addSeparator()
+        about_action = QAction("About\u2026", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
@@ -255,6 +259,29 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Save Error", str(exc))
             return
         self._status.showMessage(f"Saved to: {path.name}")
+
+    def _show_about_nst(self) -> None:
+        QMessageBox.information(
+            self,
+            "About Neural Style Transfer",
+            "<b>How Neural Style Transfer works</b><br><br>"
+            "Neural Style Transfer applies the visual texture of a <i>style image</i> "
+            "(e.g. a painting) to your <i>content photo</i> while preserving its "
+            "structure and shapes.<br><br>"
+            "<b>Feed-forward network (Johnson et al., 2016)</b><br>"
+            "Unlike the original iterative optimisation, this app uses a lightweight "
+            "convolutional network trained specifically for each style. Once trained, "
+            "a single forward pass through the network transforms any photo in "
+            "milliseconds — no per-image optimisation required.<br><br>"
+            "<b>Tiled inference</b><br>"
+            "To handle large photos without running out of GPU memory, the image is "
+            "divided into overlapping tiles, each tile is processed independently, "
+            "and the results are blended back together seamlessly.<br><br>"
+            "<b>Strength slider</b><br>"
+            "Blends the styled result with the original photo (0 % = original, "
+            "100 % = fully styled).<br><br>"
+            "Tile size and overlap can be tuned in <i>File → Settings</i>.",
+        )
 
     def _show_about(self) -> None:
         QMessageBox.about(
