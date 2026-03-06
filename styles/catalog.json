@@ -44,6 +44,15 @@
       "model_path": "styles/starry_night/model.onnx",
       "preview_path": "styles/starry_night/preview.jpg",
       "is_builtin": true
+    },
+    {
+      "id": "banksy",
+      "name": "Banksy",
+      "description": "Street-art stencil style",
+      "author": "PeterWazinski",
+      "model_path": "styles/banksy/model.onnx",
+      "preview_path": "styles/banksy/preview.jpg",
+      "is_builtin": true
     }
   ]
 }
