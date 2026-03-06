@@ -75,7 +75,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="StyleTransfer",
+    name="PetersPictureStylist",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
