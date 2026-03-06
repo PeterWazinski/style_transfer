@@ -30,7 +30,7 @@ def _project_root() -> Path:
     """
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)  # type: ignore[attr-defined]
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def _log_path() -> Path:
@@ -41,7 +41,7 @@ def _log_path() -> Path:
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent / "app.log"
-    return Path(__file__).resolve().parent.parent / "app.log"
+    return Path(__file__).resolve().parent.parent.parent / "app.log"
 
 
 _STYLES_ROOT: Path = _project_root() / "styles"
