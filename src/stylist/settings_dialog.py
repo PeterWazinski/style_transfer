@@ -71,7 +71,7 @@ class SettingsDialog(QDialog):
 
     def _hint(self, text: str) -> QLabel:
         """Return a small grey hint label for display below a form row."""
-        lbl = QLabel(f"<small style='color: grey;'>{text}</small>", self)
+        lbl = QLabel(f"<small style='color: black;'>{text}</small>", self)
         lbl.setWordWrap(True)
         return lbl
 
