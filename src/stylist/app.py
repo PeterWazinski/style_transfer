@@ -12,6 +12,8 @@ import logging
 import sys
 from pathlib import Path
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from src.core.engine import StyleTransferEngine
@@ -71,12 +73,50 @@ def _setup_logging() -> None:
     root.addHandler(ch)
 
 
+def _make_palette_icon(size: int = 64) -> QIcon:
+    """Draw a painter's palette icon programmatically and return it as a QIcon."""
+    pix = QPixmap(size, size)
+    pix.fill(Qt.transparent)  # type: ignore[attr-defined]
+
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)  # type: ignore[attr-defined]
+
+    # --- Palette body (egg-shaped: wide ellipse offset upward) ---
+    body_color = QColor("#C8A87A")   # warm wood/tan
+    p.setBrush(QBrush(body_color))
+    p.setPen(Qt.NoPen)  # type: ignore[attr-defined]
+    path = QPainterPath()
+    path.addEllipse(2, 8, size - 4, size - 14)
+    p.drawPath(path)
+
+    # --- Thumb hole ---
+    p.setBrush(QBrush(Qt.white))  # type: ignore[attr-defined]
+    p.drawEllipse(int(size * 0.12), int(size * 0.38), int(size * 0.20), int(size * 0.22))
+
+    # --- Paint blobs (arc of 6 colours) ---
+    import math
+    blob_colors = ["#E63946", "#F4A261", "#2A9D8F", "#457B9D", "#9B5DE5", "#F9C74F"]
+    blob_r = int(size * 0.095)
+    cx, cy = size * 0.58, size * 0.42
+    radius = size * 0.27
+    for i, color in enumerate(blob_colors):
+        angle = math.pi * 0.05 + i * math.pi * 0.19
+        bx = cx + radius * math.cos(angle)
+        by = cy - radius * math.sin(angle)
+        p.setBrush(QBrush(QColor(color)))
+        p.drawEllipse(int(bx - blob_r), int(by - blob_r), blob_r * 2, blob_r * 2)
+
+    p.end()
+    return QIcon(pix)
+
+
 def main() -> int:
     """Create the Qt application, build the main window, and run the event loop."""
     _setup_logging()
     app = QApplication(sys.argv)
-    app.setApplicationName("Style Transfer")
+    app.setApplicationName("Peter's Picture Stylist")
     app.setApplicationVersion("0.4.0")
+    app.setWindowIcon(_make_palette_icon())
 
     settings = AppSettings.load()
     registry = StyleRegistry(catalog_path=_CATALOG_PATH)

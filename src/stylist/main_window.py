@@ -79,7 +79,7 @@ class MainWindow(QMainWindow):
         self._current_photo_path: Optional[Path] = None
         self._styled_photo: Optional[PILImage] = None
 
-        self.setWindowTitle("Style Transfer")
+        self.setWindowTitle("Peter's Picture Stylist")
         self.resize(1200, 750)
         self._build_ui()
         self._wire_signals()
@@ -286,7 +286,7 @@ class MainWindow(QMainWindow):
     def _show_about(self) -> None:
         QMessageBox.about(
             self,
-            "About Style Transfer",
+            "About Peter's Picture Stylist",
             "<b>Fast Neural Style Transfer</b><br>"
             "Powered by Johnson et al. (2016) feed-forward network.<br><br>"
             "Pretrained ONNX models courtesy of<br>"
