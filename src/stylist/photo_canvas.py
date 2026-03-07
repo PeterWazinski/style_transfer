@@ -163,6 +163,7 @@ class PhotoCanvasView(QWidget):
     """
 
     open_photo_requested: Signal = Signal()
+    reset_requested: Signal = Signal()
     apply_requested: Signal = Signal(str, float)
     reapply_requested: Signal = Signal(str, float)
     save_requested: Signal = Signal()
@@ -192,25 +193,35 @@ class PhotoCanvasView(QWidget):
         ctrl.addWidget(self.strength_slider)
         ctrl.addStretch()
 
+        # Left group: Open Photo | Reset | Save Result
         self.open_button = QPushButton("Open Photo", self)
+        self.reset_button = QPushButton("Reset", self)
+        self.save_button = QPushButton("Save Result", self)
+        self.reset_button.setEnabled(False)
+        self.reset_button.setToolTip("Reload original photo and discard all style filters")
+        self.save_button.setEnabled(False)
+        ctrl.addWidget(self.open_button)
+        ctrl.addWidget(self.reset_button)
+        ctrl.addWidget(self.save_button)
+
+        ctrl.addSpacing(24)  # visual gap between groups
+
+        # Right group: Apply | Re-Apply
         self.apply_button = QPushButton("Apply", self)
         self.reapply_button = QPushButton("Re-Apply", self)
-        self.save_button = QPushButton("Save Result", self)
         self.apply_button.setEnabled(False)
         self.reapply_button.setEnabled(False)
         self.reapply_button.setToolTip(
             "Apply the selected style to the already-styled result\n"
             "(chain multiple styles on top of each other)"
         )
-        self.save_button.setEnabled(False)
-        ctrl.addWidget(self.open_button)
         ctrl.addWidget(self.apply_button)
         ctrl.addWidget(self.reapply_button)
-        ctrl.addWidget(self.save_button)
         root.addLayout(ctrl)
 
         # Connections
         self.open_button.clicked.connect(self.open_photo_requested)
+        self.reset_button.clicked.connect(self.reset_requested)
         self.apply_button.clicked.connect(self._on_apply_clicked)
         self.reapply_button.clicked.connect(self._on_reapply_clicked)
         self.save_button.clicked.connect(self.save_requested)
@@ -224,6 +235,7 @@ class PhotoCanvasView(QWidget):
         """Display *pixmap* as the original (left) layer."""
         self.split_view.set_original_pixmap(pixmap)
         self._has_original = True
+        self.reset_button.setEnabled(True)
         self.apply_button.setEnabled(self._current_style_id is not None)
 
     def set_styled(self, pixmap: QPixmap) -> None:
@@ -239,6 +251,18 @@ class PhotoCanvasView(QWidget):
         self._has_styled = False
         self.reapply_button.setEnabled(False)
         self.save_button.setEnabled(False)
+        self.split_view.set_split_ratio(0.5)
+
+    def reset_all(self) -> None:
+        """Full reset: clear both panes and disable all action buttons."""
+        self.split_view.set_original_pixmap(QPixmap())
+        self.split_view.set_styled_pixmap(QPixmap())
+        self._has_original = False
+        self._has_styled = False
+        self.apply_button.setEnabled(False)
+        self.reapply_button.setEnabled(False)
+        self.save_button.setEnabled(False)
+        self.reset_button.setEnabled(False)
         self.split_view.set_split_ratio(0.5)
 
     def set_active_style(self, style_id: str) -> None:

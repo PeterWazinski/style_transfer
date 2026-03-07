@@ -164,6 +164,7 @@ class MainWindow(QMainWindow):
         self.gallery.style_apply_requested.connect(self._on_style_apply_requested)
         # Canvas → actions
         self.canvas.open_photo_requested.connect(self._open_photo)
+        self.canvas.reset_requested.connect(self._reset_photo)
         self.canvas.apply_requested.connect(self._apply_style)
         self.canvas.reapply_requested.connect(self._reapply_style)
         self.canvas.save_requested.connect(self._save_result)
@@ -191,6 +192,33 @@ class MainWindow(QMainWindow):
         self._on_style_selected(style)
         if self._current_photo is not None:
             self._apply_style(style.id, self.canvas.strength_slider.strength())
+
+    def _reset_photo(self) -> None:
+        """Confirm, then reload the original photo as if it were just opened."""
+        if self._current_photo_path is None:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Reset Style Filters",
+            "Do you really want to reset all style filters?",
+            QMessageBox.Yes | QMessageBox.Cancel,  # type: ignore[attr-defined]
+            QMessageBox.Cancel,  # type: ignore[attr-defined]
+        )
+        if reply != QMessageBox.Yes:  # type: ignore[attr-defined]
+            return
+        try:
+            image = self._photo_manager.load(self._current_photo_path)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Load Error", str(exc))
+            return
+        self._current_photo = image
+        self._styled_photo = None
+        self.canvas.reset_styled()
+        self._save_action.setEnabled(False)
+        self.canvas.set_original(self._pil_to_pixmap(image))
+        self._status.showMessage(
+            f"Reset: {self._current_photo_path.name}  ({image.width}\u00d7{image.height})"
+        )
 
     def _open_photo(self) -> None:
         path_str, _ = QFileDialog.getOpenFileName(
