@@ -245,18 +245,17 @@ class TestResetStyled:
         canvas.reset_styled()
         assert canvas.split_view.split_ratio() == pytest.approx(0.5)
 
-    def test_slider_auto_apply_suppressed_after_styled_result(
+    def test_slider_auto_apply_fires_after_styled_result(
         self, qtbot, canvas: PhotoCanvasView
     ) -> None:
-        """Once a styled result exists, releasing the slider must NOT emit apply_requested."""
+        """Releasing the slider must emit apply_requested even when a styled result already exists."""
         canvas.set_original(_make_pixmap())
         canvas.set_active_style("candy")
-        canvas.set_styled(_make_pixmap())   # result exists → slider should be silent
+        canvas.set_styled(_make_pixmap())
 
         received: list[tuple] = []
         canvas.apply_requested.connect(lambda sid, s: received.append((sid, s)))
 
-        # Simulate slider release
         canvas.strength_slider.released.emit()
 
-        assert received == [], "Slider auto-apply must be suppressed when a styled result exists"
+        assert len(received) == 1, "Slider must auto-apply regardless of whether a styled result exists"

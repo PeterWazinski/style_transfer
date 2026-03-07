@@ -274,11 +274,6 @@ class PhotoCanvasView(QWidget):
             )
 
     def _on_strength_released(self) -> None:
-        """Auto-apply when slider is released — but only before the first styled result.
-
-        Once a styled result exists the user should use Apply (re-apply to original)
-        or Re-Apply (chain onto the current result) explicitly, so that the slider
-        does not accidentally overwrite the styled source used by Re-Apply.
-        """
-        if self._has_original and self._current_style_id and not self._has_styled:
+        """Auto-apply when slider is released (original photo → styled result)."""
+        if self._has_original and self._current_style_id:
             self._on_apply_clicked()
