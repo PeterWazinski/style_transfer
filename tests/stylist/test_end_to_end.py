@@ -253,3 +253,112 @@ class TestSettingsIntegration:
         e2e_window._on_settings_changed(new_settings)
         assert e2e_window._settings.tile_size == 512
         assert e2e_window._settings.use_float16 is True
+
+
+# ---------------------------------------------------------------------------
+# Re-Apply journey
+# ---------------------------------------------------------------------------
+
+def _load_photo_and_apply(window: MainWindow, tmp_path: Path, style_id: str = "e2e-style") -> None:
+    """Shared helper: open a photo file and apply a style."""
+    photo_path = tmp_path / "photo.jpg"
+    Image.fromarray(np.zeros((128, 128, 3), dtype=np.uint8)).save(photo_path)
+    with patch(
+        "src.stylist.main_window.QFileDialog.getOpenFileName",
+        return_value=(str(photo_path), ""),
+    ):
+        window._open_photo()
+    first_index = window.gallery.model().index(0, 0)
+    window.gallery._list_view.clicked.emit(first_index)
+    window._apply_style(style_id, 1.0)
+
+
+class TestReApplyJourney:
+    def test_reapply_uses_styled_photo_as_input(
+        self, qtbot, e2e_window: MainWindow, tmp_path: Path
+    ) -> None:
+        """_reapply_style must pass _styled_photo (not _current_photo) to engine.apply."""
+        _load_photo_and_apply(e2e_window, tmp_path)
+
+        # Capture the styled result that should become the reapply source
+        styled_before_reapply = e2e_window._styled_photo
+
+        captured_inputs: list[Image.Image] = []
+        original_apply = e2e_window._engine.apply
+
+        def _spy_apply(photo: Image.Image, *args, **kwargs) -> Image.Image:
+            captured_inputs.append(photo)
+            return original_apply(photo, *args, **kwargs)
+
+        e2e_window._engine.apply = _spy_apply  # type: ignore[assignment]
+        try:
+            e2e_window._reapply_style("e2e-style", 1.0)
+        finally:
+            e2e_window._engine.apply = original_apply  # type: ignore[assignment]
+
+        assert len(captured_inputs) == 1
+        assert np.array_equal(
+            np.array(captured_inputs[0]),
+            np.array(styled_before_reapply),
+        ), "Re-Apply must use the styled result as input, not the original photo"
+
+    def test_reapply_updates_styled_buffer(
+        self, qtbot, e2e_window: MainWindow, tmp_path: Path
+    ) -> None:
+        """After _reapply_style, _styled_photo must be the new result (not the previous one)."""
+        _load_photo_and_apply(e2e_window, tmp_path)
+
+        styled_before = e2e_window._styled_photo
+        e2e_window._reapply_style("e2e-style", 1.0)
+        styled_after = e2e_window._styled_photo
+
+        # Both are PIL Images; after reapply the buffer must be refreshed
+        assert styled_after is not None
+        assert styled_after is not styled_before
+
+    def test_reapply_shows_previous_result_in_left_pane(
+        self, qtbot, e2e_window: MainWindow, tmp_path: Path
+    ) -> None:
+        """After Re-Apply, the split view must still show content (not be blank)."""
+        _load_photo_and_apply(e2e_window, tmp_path)
+        e2e_window._reapply_style("e2e-style", 1.0)
+
+        # The canvas still reports a styled result — both panes are populated
+        assert e2e_window.canvas.has_styled()
+
+    def test_open_new_photo_clears_styled_buffer(
+        self, qtbot, e2e_window: MainWindow, tmp_path: Path
+    ) -> None:
+        """Opening a new photo must reset _styled_photo to None and clear has_styled()."""
+        _load_photo_and_apply(e2e_window, tmp_path)
+        assert e2e_window._styled_photo is not None
+        assert e2e_window.canvas.has_styled()
+
+        # Open a second (different) photo
+        photo2 = tmp_path / "photo2.jpg"
+        Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8)).save(photo2)
+        with patch(
+            "src.stylist.main_window.QFileDialog.getOpenFileName",
+            return_value=(str(photo2), ""),
+        ):
+            e2e_window._open_photo()
+
+        assert e2e_window._styled_photo is None
+        assert not e2e_window.canvas.has_styled()
+
+    def test_open_new_photo_disables_reapply_button(
+        self, qtbot, e2e_window: MainWindow, tmp_path: Path
+    ) -> None:
+        """Re-Apply button must be disabled after opening a new photo."""
+        _load_photo_and_apply(e2e_window, tmp_path)
+        assert e2e_window.canvas.reapply_button.isEnabled()
+
+        photo2 = tmp_path / "photo2.jpg"
+        Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8)).save(photo2)
+        with patch(
+            "src.stylist.main_window.QFileDialog.getOpenFileName",
+            return_value=(str(photo2), ""),
+        ):
+            e2e_window._open_photo()
+
+        assert not e2e_window.canvas.reapply_button.isEnabled()

@@ -157,3 +157,106 @@ class TestSignals:
         assert len(received_args) == 1
         assert received_args[0][0] == "candy"
         assert received_args[0][1] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Re-Apply button
+# ---------------------------------------------------------------------------
+
+class TestReApplyButton:
+    def test_reapply_button_starts_disabled(self, canvas: PhotoCanvasView) -> None:
+        assert not canvas.reapply_button.isEnabled()
+
+    def test_reapply_button_disabled_when_only_original_set(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_original(_make_pixmap())
+        canvas.set_active_style("candy")
+        assert not canvas.reapply_button.isEnabled()
+
+    def test_reapply_button_enabled_after_styled_result_and_style(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_active_style("candy")
+        canvas.set_styled(_make_pixmap())
+        assert canvas.reapply_button.isEnabled()
+
+    def test_reapply_button_enabled_by_set_active_style_when_styled_exists(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_styled(_make_pixmap())      # styled result present
+        canvas.set_active_style("mosaic")      # then a different style is selected
+        assert canvas.reapply_button.isEnabled()
+
+    def test_reapply_button_emits_reapply_requested(
+        self, qtbot, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_active_style("candy")
+        canvas.set_styled(_make_pixmap())
+        received: list[tuple] = []
+        canvas.reapply_requested.connect(lambda sid, s: received.append((sid, s)))
+
+        canvas.reapply_button.click()
+
+        assert len(received) == 1
+        assert received[0][0] == "candy"
+        assert received[0][1] == pytest.approx(1.0)
+
+    def test_reapply_button_not_clickable_without_style(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_styled(_make_pixmap())   # result exists but no style selected
+        # Button should be disabled — reapply_button requires a style AND styled result
+        assert not canvas.reapply_button.isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# reset_styled
+# ---------------------------------------------------------------------------
+
+class TestResetStyled:
+    def test_reset_styled_clears_has_styled_flag(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_styled(_make_pixmap())
+        assert canvas.has_styled()
+        canvas.reset_styled()
+        assert not canvas.has_styled()
+
+    def test_reset_styled_disables_save_button(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_styled(_make_pixmap())
+        canvas.reset_styled()
+        assert not canvas.save_button.isEnabled()
+
+    def test_reset_styled_disables_reapply_button(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_active_style("candy")
+        canvas.set_styled(_make_pixmap())
+        canvas.reset_styled()
+        assert not canvas.reapply_button.isEnabled()
+
+    def test_reset_styled_resets_split_ratio(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.split_view.set_split_ratio(0.8)
+        canvas.reset_styled()
+        assert canvas.split_view.split_ratio() == pytest.approx(0.5)
+
+    def test_slider_auto_apply_suppressed_after_styled_result(
+        self, qtbot, canvas: PhotoCanvasView
+    ) -> None:
+        """Once a styled result exists, releasing the slider must NOT emit apply_requested."""
+        canvas.set_original(_make_pixmap())
+        canvas.set_active_style("candy")
+        canvas.set_styled(_make_pixmap())   # result exists → slider should be silent
+
+        received: list[tuple] = []
+        canvas.apply_requested.connect(lambda sid, s: received.append((sid, s)))
+
+        # Simulate slider release
+        canvas.strength_slider.released.emit()
+
+        assert received == [], "Slider auto-apply must be suppressed when a styled result exists"
