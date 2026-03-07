@@ -22,6 +22,9 @@ PROVIDER_CHOICES: tuple[str, ...] = ("auto", "cpu", "dml", "cuda")
 TILE_SIZE_CHOICES: tuple[int, ...] = (512, 768, 1024, 2048)
 # Valid overlap choices (pixels).
 OVERLAP_CHOICES: tuple[int, ...] = (32, 64, 128, 192, 256)
+# Max-megapixel choices shown in the Settings dialog.
+# 0.0 = no limit.
+MAX_MP_CHOICES: tuple[float, ...] = (8.0, 12.0, 20.0, 40.0, 0.0)
 
 
 @dataclass
@@ -45,6 +48,7 @@ class AppSettings:
     default_output_dir: str = ""
     execution_provider: str = "auto"
     use_float16: bool = False
+    max_megapixels: float = 20.0  # 0.0 = no limit
 
     # ------------------------------------------------------------------
     # Validation
@@ -70,6 +74,10 @@ class AppSettings:
             raise ValueError(
                 f"overlap ({self.overlap}) must be < tile_size // 2 "
                 f"({self.tile_size // 2})"
+            )
+        if self.max_megapixels < 0.0:
+            raise ValueError(
+                f"max_megapixels must be >= 0 (0 = no limit), got {self.max_megapixels}"
             )
 
     # ------------------------------------------------------------------

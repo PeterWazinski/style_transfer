@@ -140,6 +140,23 @@ class SettingsDialog(QDialog):
             "Reduces VRAM usage and speeds up rendering. Has no effect on CPU-only runtimes."
         ))
 
+        # --- Max megapixels ---
+        self.max_mp_combo = QComboBox(self)
+        _MP_LABELS: dict[float, str] = {
+            8.0:  "8 MP  (3264 × 2448 — old phone)",
+            12.0: "12 MP (4000 × 3000 — typical phone)",
+            20.0: "20 MP (5000 × 4000 — default)",
+            40.0: "40 MP (7248 × 5520 — high-res camera)",
+            0.0:  "No limit  ⚠ may use a lot of RAM",
+        }
+        for v in MAX_MP_CHOICES:
+            self.max_mp_combo.addItem(_MP_LABELS[v], v)
+        form.addRow("Max photo size:", self.max_mp_combo)
+        form.addRow("", self._hint(
+            "Photos larger than this are automatically scaled down before inference. "
+            "Keeps memory usage and processing time in check."
+        ))
+
         root.addLayout(form)
 
         # --- Info label ---
@@ -183,6 +200,11 @@ class SettingsDialog(QDialog):
         # Float16
         self.float16_check.setChecked(settings.use_float16)
 
+        # Max megapixels
+        idx = self.max_mp_combo.findData(settings.max_megapixels)
+        if idx >= 0:
+            self.max_mp_combo.setCurrentIndex(idx)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -195,6 +217,7 @@ class SettingsDialog(QDialog):
             default_output_dir=self.output_dir_edit.text().strip(),
             execution_provider=self.provider_combo.currentData(),
             use_float16=self.float16_check.isChecked(),
+            max_megapixels=self.max_mp_combo.currentData(),
         )
 
     # ------------------------------------------------------------------

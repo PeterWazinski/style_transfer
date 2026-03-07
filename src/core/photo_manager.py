@@ -105,14 +105,18 @@ class PhotoManager:
     # Load
     # ------------------------------------------------------------------
 
-    def load(self, path: Path) -> Image.Image:
+    def load(self, path: Path, max_megapixels: float = 0.0) -> Image.Image:
         """Load a JPEG or PNG file from disk.
 
         Applies EXIF-based auto-rotation so that the returned image is
-        always in display orientation.
+        always in display orientation.  If *max_megapixels* is > 0 and the
+        image exceeds that pixel budget it is down-scaled (aspect ratio
+        preserved) before being returned.
 
         Args:
-            path: Absolute or relative path to the image file.
+            path:            Absolute or relative path to the image file.
+            max_megapixels:  Maximum pixel count in megapixels (e.g. 20.0).
+                             Pass 0.0 (default) to skip the limit.
 
         Returns:
             RGB PIL Image.
@@ -127,9 +131,28 @@ class PhotoManager:
             raise FileNotFoundError(f"Image file not found: {path}")
 
         img = Image.open(path)
+        # Peek the original size from the file header (no pixel decode yet).
+        original_size: tuple[int, int] = img.size
         img.load()           # fully decode into memory so file can be closed
         img = _auto_rotate(img)
         img = img.convert("RGB")
+
+        if max_megapixels > 0.0:
+            mp = img.width * img.height / 1_000_000
+            if mp > max_megapixels:
+                scale = (max_megapixels / mp) ** 0.5
+                new_w = int(img.width * scale)
+                new_h = int(img.height * scale)
+                img = img.resize((new_w, new_h), Image.LANCZOS)  # type: ignore[attr-defined]
+                logger.info(
+                    "Downscaled %s from %dx%d (%.1f MP) to %dx%d (%.1f MP) "
+                    "to fit %.0f MP limit",
+                    path.name,
+                    original_size[0], original_size[1], mp,
+                    new_w, new_h, new_w * new_h / 1_000_000,
+                    max_megapixels,
+                )
+
         logger.debug("Loaded %s (%s)", path, img.size)
         return img
 

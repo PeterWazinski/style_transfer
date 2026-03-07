@@ -209,7 +209,7 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:  # type: ignore[attr-defined]
             return
         try:
-            image = self._photo_manager.load(self._current_photo_path)
+            image = self._photo_manager.load(self._current_photo_path, max_megapixels=self._settings.max_megapixels)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Load Error", str(exc))
             return
@@ -234,7 +234,7 @@ class MainWindow(QMainWindow):
             return
         path = Path(path_str)
         try:
-            image = self._photo_manager.load(path)
+            image = self._photo_manager.load(path, max_megapixels=self._settings.max_megapixels)
         except UnsupportedFormatError as exc:
             QMessageBox.warning(self, "Unsupported Format", str(exc))
             return
@@ -251,7 +251,12 @@ class MainWindow(QMainWindow):
         # Convert PIL Image → QPixmap for display
         pixmap = self._pil_to_pixmap(image)
         self.canvas.set_original(pixmap)
-        self._status.showMessage(f"Opened: {path.name}  ({image.width}×{image.height})")
+        mp = image.width * image.height / 1_000_000
+        limit = self._settings.max_megapixels
+        note = f"  [auto-resized to {mp:.1f} MP]" if limit > 0 and mp < limit * 0.99 else ""
+        self._status.showMessage(
+            f"Opened: {path.name}  ({image.width}\u00d7{image.height}){note}"
+        )
 
     def _reapply_style(self, style_id: str, strength: float) -> None:
         """Apply *style_id* to the already-styled photo (chain styles)."""
