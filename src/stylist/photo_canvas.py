@@ -233,6 +233,14 @@ class PhotoCanvasView(QWidget):
         self.save_button.setEnabled(True)
         self.reapply_button.setEnabled(self._current_style_id is not None)
 
+    def reset_styled(self) -> None:
+        """Clear the styled result and reset the canvas to show only the original."""
+        self.split_view.set_styled_pixmap(QPixmap())
+        self._has_styled = False
+        self.reapply_button.setEnabled(False)
+        self.save_button.setEnabled(False)
+        self.split_view.set_split_ratio(0.5)
+
     def set_active_style(self, style_id: str) -> None:
         """Record which style is currently selected; enables Apply when a photo is loaded."""
         self._current_style_id = style_id

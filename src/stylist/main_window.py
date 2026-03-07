@@ -213,6 +213,9 @@ class MainWindow(QMainWindow):
 
         self._current_photo = image
         self._current_photo_path = path
+        self._styled_photo = None          # clear any previous styled result
+        self.canvas.reset_styled()         # reset right pane + disable Re-Apply/Save
+        self._save_action.setEnabled(False)
         # Convert PIL Image → QPixmap for display
         pixmap = self._pil_to_pixmap(image)
         self.canvas.set_original(pixmap)
