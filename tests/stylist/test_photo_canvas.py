@@ -248,14 +248,34 @@ class TestResetStyled:
     def test_slider_auto_apply_fires_after_styled_result(
         self, qtbot, canvas: PhotoCanvasView
     ) -> None:
-        """Releasing the slider must emit apply_requested even when a styled result already exists."""
+        """When a styled result exists, releasing the slider must emit reapply_requested
+        (not apply_requested) so the Re-Apply chain is preserved."""
         canvas.set_original(_make_pixmap())
         canvas.set_active_style("candy")
         canvas.set_styled(_make_pixmap())
+
+        apply_received: list[tuple] = []
+        reapply_received: list[tuple] = []
+        canvas.apply_requested.connect(lambda sid, s: apply_received.append((sid, s)))
+        canvas.reapply_requested.connect(lambda sid, s: reapply_received.append((sid, s)))
+
+        canvas.strength_slider.released.emit()
+
+        assert apply_received == [], "Slider must NOT emit apply_requested when styled result exists"
+        assert len(reapply_received) == 1, "Slider must emit reapply_requested when styled result exists"
+        assert reapply_received[0][0] == "candy"
+
+    def test_slider_auto_apply_fires_apply_without_styled_result(
+        self, qtbot, canvas: PhotoCanvasView
+    ) -> None:
+        """Without a styled result, releasing the slider must emit apply_requested."""
+        canvas.set_original(_make_pixmap())
+        canvas.set_active_style("candy")
 
         received: list[tuple] = []
         canvas.apply_requested.connect(lambda sid, s: received.append((sid, s)))
 
         canvas.strength_slider.released.emit()
 
-        assert len(received) == 1, "Slider must auto-apply regardless of whether a styled result exists"
+        assert len(received) == 1
+        assert received[0][0] == "candy"
