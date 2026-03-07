@@ -74,7 +74,7 @@ class StyleTrainer:
         style_weight: float = 1e8,
         content_weight: float = 1e5,
         learning_rate: float = 1e-3,
-        checkpoint_interval: int = 2000,
+        checkpoint_interval: int = 5000,
         checkpoint_path: Path | None = None,
         progress_callback: Callable[[int, int, float], None] | None = None,
         max_batches: int | None = None,
