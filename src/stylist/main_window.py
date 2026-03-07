@@ -22,15 +22,20 @@ from pathlib import Path
 from typing import Optional
 
 from PIL.Image import Image as PILImage
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QPixmap
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QDockWidget,
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
+    QPushButton,
+    QScrollArea,
     QStatusBar,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -145,8 +150,8 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_nst_action)
 
         help_menu.addSeparator()
-        about_action = QAction("About\u2026", self)
-        about_action.triggered.connect(self._show_about)
+        about_action = QAction("Credits\u2026", self)
+        about_action.triggered.connect(self._show_credits)
         help_menu.addAction(about_action)
 
     # ------------------------------------------------------------------
@@ -260,38 +265,76 @@ class MainWindow(QMainWindow):
             return
         self._status.showMessage(f"Saved to: {path.name}")
 
+    def _show_link_dialog(self, title: str, html: str) -> None:
+        """Show an informational dialog that supports clickable hyperlinks."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.setMinimumWidth(520)
+
+        label = QLabel(html)
+        label.setWordWrap(True)
+        label.setOpenExternalLinks(True)
+        label.setTextFormat(Qt.RichText)  # type: ignore[attr-defined]
+        label.setContentsMargins(4, 4, 4, 4)
+
+        scroll = QScrollArea()
+        scroll.setWidget(label)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        ok_btn = QPushButton("OK")
+        ok_btn.setFixedWidth(80)
+        ok_btn.clicked.connect(dlg.accept)
+
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(scroll)
+        layout.addWidget(ok_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        dlg.exec()
+
     def _show_about_nst(self) -> None:
-        QMessageBox.information(
-            self,
+        self._show_link_dialog(
             "About Neural Style Transfer",
             "<b>How Neural Style Transfer works</b><br><br>"
-            "Neural Style Transfer applies the visual texture of a <i>style image</i> "
+            "Neural Style Transfer (NST) applies the visual texture of a <i>style image</i> "
             "(e.g. a painting) to your <i>content photo</i> while preserving its "
             "structure and shapes.<br><br>"
             "<b>Feed-forward network (Johnson et al., 2016)</b><br>"
             "Unlike the original iterative optimisation, this app uses a lightweight "
             "convolutional network trained specifically for each style. Once trained, "
-            "a single forward pass through the network transforms any photo in "
-            "milliseconds — no per-image optimisation required.<br><br>"
+            "a single forward pass transforms any photo in milliseconds — "
+            "no per-image optimisation required.<br><br>"
             "<b>Tiled inference</b><br>"
             "To handle large photos without running out of GPU memory, the image is "
-            "divided into overlapping tiles, each tile is processed independently, "
-            "and the results are blended back together seamlessly.<br><br>"
+            "divided into overlapping tiles, each processed independently, "
+            "then blended back together seamlessly.<br><br>"
             "<b>Strength slider</b><br>"
-            "Blends the styled result with the original photo (0 % = original, "
-            "100 % = fully styled).<br><br>"
-            "Tile size and overlap can be tuned in <i>File → Settings</i>.",
+            "Blends the styled result with the original photo "
+            "(0&nbsp;% = original, 100&nbsp;% = fully styled). "
+            "Tile size and overlap can be tuned in <i>File &#8594; Settings</i>.<br><br>"
+            "<b>References</b><br>"
+            "&#8226; Gatys et al. (2015) &mdash; "
+            "<a href='https://arxiv.org/pdf/1508.06576'>A Neural Algorithm of Artistic Style</a> "
+            "&mdash; the original NST paper using iterative optimisation.<br>"
+            "&#8226; Johnson et al. (2016) &mdash; "
+            "<a href='https://arxiv.org/pdf/1603.08155'>Perceptual Losses for Real-Time Style Transfer and Super-Resolution</a> "
+            "&mdash; the feed-forward network used in this app.<br>"
+            "&#8226; Kaggle notebook &mdash; "
+            "<a href='https://www.kaggle.com/code/yashchoudhary/fast-neural-style-transfer'>Fast Neural Style Transfer</a> "
+            "by Yash Choudhary.",
         )
 
-    def _show_about(self) -> None:
-        QMessageBox.about(
-            self,
-            "About Peter's Picture Stylist",
-            "<b>Fast Neural Style Transfer</b><br>"
-            "Powered by Johnson et al. (2016) feed-forward network.<br><br>"
-            "Pretrained ONNX models courtesy of<br>"
-            "<em>yakhyo/fast-neural-style-transfer</em> (MIT)<br>"
-            "<em>igreat/fast-style-transfer</em> (MIT)<br>",
+    def _show_credits(self) -> None:
+        self._show_link_dialog(
+            "Credits",
+            "<b>Peter's Picture Stylist</b><br><br>"
+            "Pretrained ONNX models courtesy of:<br>"
+            "&nbsp;&nbsp;<em>yakhyo/fast-neural-style-transfer</em> (MIT)<br>"
+            "&nbsp;&nbsp;<em>igreat/fast-style-transfer</em> (MIT)<br><br>"
+            "Training infrastructure:<br>"
+            "&nbsp;&nbsp;<b>Kaggle</b> &mdash; free GPU compute (T4 x1) "
+            "used to train new styles.<br><br>"
+            "Built with Python, PySide6, and ONNX Runtime.",
         )
 
     def _open_settings_dialog(self) -> None:
