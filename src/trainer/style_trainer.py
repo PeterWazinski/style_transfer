@@ -226,7 +226,7 @@ class StyleTrainer:
         dummy = torch.zeros(1, 3, image_size, image_size, device=device)
         torch.onnx.export(
             net,
-            dummy,
+            (dummy,),
             str(onnx_path),
             opset_version=11,
             input_names=["input"],
