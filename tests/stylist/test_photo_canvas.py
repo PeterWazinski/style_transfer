@@ -248,22 +248,25 @@ class TestResetStyled:
     def test_slider_auto_apply_fires_after_styled_result(
         self, qtbot, canvas: PhotoCanvasView
     ) -> None:
-        """When a styled result exists, releasing the slider must emit reapply_requested
-        (not apply_requested) so the Re-Apply chain is preserved."""
+        """When a styled result exists, the slider must emit reapply_strength_requested
+        (not apply_requested or reapply_requested) so the left pane / chain is preserved."""
         canvas.set_original(_make_pixmap())
         canvas.set_active_style("candy")
         canvas.set_styled(_make_pixmap())
 
         apply_received: list[tuple] = []
         reapply_received: list[tuple] = []
+        strength_received: list[tuple] = []
         canvas.apply_requested.connect(lambda sid, s: apply_received.append((sid, s)))
         canvas.reapply_requested.connect(lambda sid, s: reapply_received.append((sid, s)))
+        canvas.reapply_strength_requested.connect(lambda sid, s: strength_received.append((sid, s)))
 
         canvas.strength_slider.released.emit()
 
         assert apply_received == [], "Slider must NOT emit apply_requested when styled result exists"
-        assert len(reapply_received) == 1, "Slider must emit reapply_requested when styled result exists"
-        assert reapply_received[0][0] == "candy"
+        assert reapply_received == [], "Slider must NOT emit reapply_requested (would advance chain)"
+        assert len(strength_received) == 1, "Slider must emit reapply_strength_requested"
+        assert strength_received[0][0] == "candy"
 
     def test_slider_auto_apply_fires_apply_without_styled_result(
         self, qtbot, canvas: PhotoCanvasView

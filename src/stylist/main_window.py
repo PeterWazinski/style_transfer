@@ -83,6 +83,7 @@ class MainWindow(QMainWindow):
         self._current_photo: Optional[PILImage] = None
         self._current_photo_path: Optional[Path] = None
         self._styled_photo: Optional[PILImage] = None
+        self._styled_photo_input: Optional[PILImage] = None  # source that produced _styled_photo
 
         self.setWindowTitle("Peter's Picture Stylist")
         self.resize(1200, 750)
@@ -167,6 +168,7 @@ class MainWindow(QMainWindow):
         self.canvas.reset_requested.connect(self._reset_photo)
         self.canvas.apply_requested.connect(self._apply_style)
         self.canvas.reapply_requested.connect(self._reapply_style)
+        self.canvas.reapply_strength_requested.connect(self._reapply_style_strength)
         self.canvas.save_requested.connect(self._save_result)
 
     # ------------------------------------------------------------------
@@ -213,6 +215,7 @@ class MainWindow(QMainWindow):
             return
         self._current_photo = image
         self._styled_photo = None
+        self._styled_photo_input = None
         self.canvas.reset_styled()
         self._save_action.setEnabled(False)
         self.canvas.set_original(self._pil_to_pixmap(image))
@@ -242,6 +245,7 @@ class MainWindow(QMainWindow):
         self._current_photo = image
         self._current_photo_path = path
         self._styled_photo = None          # clear any previous styled result
+        self._styled_photo_input = None
         self.canvas.reset_styled()         # reset right pane + disable Re-Apply/Save
         self._save_action.setEnabled(False)
         # Convert PIL Image → QPixmap for display
@@ -280,10 +284,52 @@ class MainWindow(QMainWindow):
             self.canvas.reapply_button.setEnabled(True)
         # Show the previous styled result on the left for comparison
         self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(source_photo))
+        self._styled_photo_input = source_photo   # the input to this new chain step
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
         self._save_action.setEnabled(True)
         self._status.showMessage("Style re-applied.")
+
+    def _reapply_style_strength(self, style_id: str, strength: float) -> None:
+        """Re-run the current chain step with a new strength.
+
+        Unlike :meth:`_reapply_style` (Re-Apply button) this does *not* advance
+        the chain: the left pane keeps showing p_{n-1} and the right pane is
+        updated with the new result.  ``_styled_photo_input`` (p_{n-1}) is
+        re-used as the source so the slider never "eats" a chain step.
+        """
+        source = self._styled_photo_input
+        if source is None:
+            # Fallback: no recorded input yet — treat like a normal apply
+            self._apply_style(style_id, strength)
+            return
+        self._status.showMessage("Adjusting strength\u2026")
+        self.canvas.apply_button.setEnabled(False)
+        self.canvas.reapply_button.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
+        QApplication.processEvents()
+        try:
+            result = self._engine.apply(
+                source,
+                style_id,
+                strength=strength,
+                tile_size=self._settings.tile_size,
+                overlap=self._settings.overlap,
+                use_float16=self._settings.use_float16,
+            )
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Apply Error", str(exc))
+            self._status.showMessage("Error during style transfer.")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.canvas.apply_button.setEnabled(True)
+            self.canvas.reapply_button.setEnabled(True)
+        # Keep the left pane unchanged — only update the right pane & buffer
+        self._styled_photo = result
+        self.canvas.set_styled(self._pil_to_pixmap(result))
+        self._save_action.setEnabled(True)
+        self._status.showMessage("Strength adjusted.")
 
     def _apply_style(self, style_id: str, strength: float) -> None:
         if self._current_photo is None:
@@ -308,6 +354,7 @@ class MainWindow(QMainWindow):
         finally:
             QApplication.restoreOverrideCursor()
             self.canvas.apply_button.setEnabled(True)
+        self._styled_photo_input = self._current_photo   # record what fed this result
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
         self._save_action.setEnabled(True)

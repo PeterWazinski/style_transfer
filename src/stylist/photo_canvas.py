@@ -166,6 +166,7 @@ class PhotoCanvasView(QWidget):
     reset_requested: Signal = Signal()
     apply_requested: Signal = Signal(str, float)
     reapply_requested: Signal = Signal(str, float)
+    reapply_strength_requested: Signal = Signal(str, float)  # slider: re-run same step, no chain advance
     save_requested: Signal = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -300,13 +301,17 @@ class PhotoCanvasView(QWidget):
     def _on_strength_released(self) -> None:
         """Auto-apply when slider is released.
 
-        - No styled result yet → Apply (original photo as input).
-        - Styled result exists → Re-Apply (last styled result as input),
-          so the chain built via Re-Apply is preserved.
+        - No styled result yet  → Apply (original photo as input).
+        - Styled result exists  → emit ``reapply_strength_requested`` so MainWindow
+          re-runs the *same input step* with the new strength without advancing the
+          chain (left pane is preserved).
         """
         if not self._has_original or not self._current_style_id:
             return
         if self._has_styled:
-            self._on_reapply_clicked()
+            self.reapply_strength_requested.emit(
+                self._current_style_id,
+                self.strength_slider.strength(),
+            )
         else:
             self._on_apply_clicked()
