@@ -220,16 +220,19 @@ class MainWindow(QMainWindow):
 
     def _reapply_style(self, style_id: str, strength: float) -> None:
         """Apply *style_id* to the already-styled photo (chain styles)."""
-        if self._styled_photo is None:
+        # Capture source NOW, before processEvents() could overwrite self._styled_photo
+        # via a queued slider-released signal firing _apply_style.
+        source_photo = self._styled_photo
+        if source_photo is None:
             return
-        self._status.showMessage("Re-applying style…")
+        self._status.showMessage("Re-applying style\u2026")
         self.canvas.apply_button.setEnabled(False)
         self.canvas.reapply_button.setEnabled(False)
         QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
         QApplication.processEvents()
         try:
             result = self._engine.apply(
-                self._styled_photo,
+                source_photo,
                 style_id,
                 strength=strength,
                 tile_size=self._settings.tile_size,
@@ -245,7 +248,7 @@ class MainWindow(QMainWindow):
             self.canvas.apply_button.setEnabled(True)
             self.canvas.reapply_button.setEnabled(True)
         # Show the previous styled result on the left for comparison
-        self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(self._styled_photo))
+        self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(source_photo))
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
         self._save_action.setEnabled(True)
