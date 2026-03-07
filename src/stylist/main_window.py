@@ -165,6 +165,7 @@ class MainWindow(QMainWindow):
         # Canvas → actions
         self.canvas.open_photo_requested.connect(self._open_photo)
         self.canvas.apply_requested.connect(self._apply_style)
+        self.canvas.reapply_requested.connect(self._reapply_style)
         self.canvas.save_requested.connect(self._save_result)
 
     # ------------------------------------------------------------------
@@ -216,6 +217,39 @@ class MainWindow(QMainWindow):
         pixmap = self._pil_to_pixmap(image)
         self.canvas.set_original(pixmap)
         self._status.showMessage(f"Opened: {path.name}  ({image.width}×{image.height})")
+
+    def _reapply_style(self, style_id: str, strength: float) -> None:
+        """Apply *style_id* to the already-styled photo (chain styles)."""
+        if self._styled_photo is None:
+            return
+        self._status.showMessage("Re-applying style…")
+        self.canvas.apply_button.setEnabled(False)
+        self.canvas.reapply_button.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
+        QApplication.processEvents()
+        try:
+            result = self._engine.apply(
+                self._styled_photo,
+                style_id,
+                strength=strength,
+                tile_size=self._settings.tile_size,
+                overlap=self._settings.overlap,
+                use_float16=self._settings.use_float16,
+            )
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Apply Error", str(exc))
+            self._status.showMessage("Error during style transfer.")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.canvas.apply_button.setEnabled(True)
+            self.canvas.reapply_button.setEnabled(True)
+        # Show the previous styled result on the left for comparison
+        self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(self._styled_photo))
+        self._styled_photo = result
+        self.canvas.set_styled(self._pil_to_pixmap(result))
+        self._save_action.setEnabled(True)
+        self._status.showMessage("Style re-applied.")
 
     def _apply_style(self, style_id: str, strength: float) -> None:
         if self._current_photo is None:

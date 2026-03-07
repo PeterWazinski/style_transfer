@@ -164,6 +164,7 @@ class PhotoCanvasView(QWidget):
 
     open_photo_requested: Signal = Signal()
     apply_requested: Signal = Signal(str, float)
+    reapply_requested: Signal = Signal(str, float)
     save_requested: Signal = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -193,17 +194,25 @@ class PhotoCanvasView(QWidget):
 
         self.open_button = QPushButton("Open Photo", self)
         self.apply_button = QPushButton("Apply", self)
+        self.reapply_button = QPushButton("Re-Apply", self)
         self.save_button = QPushButton("Save Result", self)
         self.apply_button.setEnabled(False)
+        self.reapply_button.setEnabled(False)
+        self.reapply_button.setToolTip(
+            "Apply the selected style to the already-styled result\n"
+            "(chain multiple styles on top of each other)"
+        )
         self.save_button.setEnabled(False)
         ctrl.addWidget(self.open_button)
         ctrl.addWidget(self.apply_button)
+        ctrl.addWidget(self.reapply_button)
         ctrl.addWidget(self.save_button)
         root.addLayout(ctrl)
 
         # Connections
         self.open_button.clicked.connect(self.open_photo_requested)
         self.apply_button.clicked.connect(self._on_apply_clicked)
+        self.reapply_button.clicked.connect(self._on_reapply_clicked)
         self.save_button.clicked.connect(self.save_requested)
         self.strength_slider.released.connect(self._on_strength_released)
 
@@ -222,11 +231,13 @@ class PhotoCanvasView(QWidget):
         self.split_view.set_styled_pixmap(pixmap)
         self._has_styled = True
         self.save_button.setEnabled(True)
+        self.reapply_button.setEnabled(self._current_style_id is not None)
 
     def set_active_style(self, style_id: str) -> None:
         """Record which style is currently selected; enables Apply when a photo is loaded."""
         self._current_style_id = style_id
         self.apply_button.setEnabled(self._has_original)
+        self.reapply_button.setEnabled(self._has_styled)
 
     def has_original(self) -> bool:
         """Return *True* if an original photo has been set."""
@@ -243,6 +254,13 @@ class PhotoCanvasView(QWidget):
     def _on_apply_clicked(self) -> None:
         if self._current_style_id:
             self.apply_requested.emit(
+                self._current_style_id,
+                self.strength_slider.strength(),
+            )
+
+    def _on_reapply_clicked(self) -> None:
+        if self._current_style_id and self._has_styled:
+            self.reapply_requested.emit(
                 self._current_style_id,
                 self.strength_slider.strength(),
             )
