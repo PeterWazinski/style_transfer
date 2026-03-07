@@ -66,6 +66,7 @@ def cmd_train(args: argparse.Namespace) -> int:
         style_weight=args.style_weight,
         content_weight=args.content_weight,
         progress_callback=_progress,
+        max_batches=args.max_batches,
     )
     print()  # newline after progress
 
@@ -141,6 +142,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--image-size",     type=int,   default=256, dest="image_size")
     p_train.add_argument("--style-weight",   type=float, default=1e8, dest="style_weight")
     p_train.add_argument("--content-weight", type=float, default=1e5, dest="content_weight")
+    p_train.add_argument("--max-batches",    type=int,   default=None, dest="max_batches",
+                         help="Stop after N gradient steps (smoke-test mode; default: run fully)")
 
     # -- preview --
     p_prev = sub.add_parser("preview", help="Generate a preview thumbnail from an ONNX model")

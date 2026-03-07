@@ -77,6 +77,7 @@ class StyleTrainer:
         checkpoint_interval: int = 2000,
         checkpoint_path: Path | None = None,
         progress_callback: Callable[[int, int, float], None] | None = None,
+        max_batches: int | None = None,
     ) -> Path:
         """Train TransformerNet and save the final PyTorch checkpoint.
 
@@ -89,6 +90,9 @@ class StyleTrainer:
             epochs:                Number of full passes over the dataset.
             batch_size:            Training batch size.
             image_size:            Resize content images to this (square) size.
+            max_batches:           Stop after this many gradient steps (all epochs
+                                   combined).  None = run all epochs fully.  Used
+                                   for quick smoke tests before full training.
             style_size:            Resize style image to this; None = original.
             style_weight:          Weight for style loss term.
             content_weight:        Weight for content loss term.
@@ -142,6 +146,8 @@ class StyleTrainer:
 
         # --- Training loop ---
         images_done: int = 0
+        batches_done: int = 0
+        stopped_early: bool = False
         for epoch in range(start_epoch, epochs):
             net.train()
             for batch in loader:
@@ -155,8 +161,14 @@ class StyleTrainer:
                 optimizer.step()
 
                 images_done += content.size(0)
+                batches_done += 1
                 if progress_callback is not None:
                     progress_callback(images_done, total_images, loss.item())
+
+                # Early stop for smoke tests
+                if max_batches is not None and batches_done >= max_batches:
+                    stopped_early = True
+                    break
 
                 # Periodic checkpoint
                 if checkpoint_interval > 0 and images_done % checkpoint_interval < batch_size:
@@ -172,6 +184,9 @@ class StyleTrainer:
                     logger.info(
                         "Checkpoint saved: %s  loss=%.4f", ckpt_file, loss.item()
                     )
+            if stopped_early:
+                logger.info("Stopped after %d batches (smoke-test mode).", batches_done)
+                break
 
         # --- Save final model (state dict only, no optimizer) ---
         torch.save({"model_state": net.state_dict()}, str(output_model_path))
