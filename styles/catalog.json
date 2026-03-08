@@ -44,6 +44,15 @@
       "model_path": "styles/starry_night/model.onnx",
       "preview_path": "styles/starry_night/preview.jpg",
       "is_builtin": true
+    },
+    {
+      "id": "mondrian",
+      "name": "Mondrian",
+      "description": "Bold primary colours in geometric grid",
+      "author": "PeterWazinski",
+      "model_path": "styles/mondrian/model.onnx",
+      "preview_path": "styles/mondrian/preview.jpg",
+      "is_builtin": true
     }
   ]
 }
