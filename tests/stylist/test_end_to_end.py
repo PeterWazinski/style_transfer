@@ -21,30 +21,7 @@ from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager
 from src.core.registry import StyleRegistry
 from src.stylist.main_window import MainWindow
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_mock_session(w: int = 64, h: int = 64) -> MagicMock:
-    """Mock ONNX session that returns a solid-green image of any requested size."""
-    session = MagicMock()
-    inp = MagicMock()
-    inp.name = "input"
-    session.get_inputs.return_value = [inp]
-
-    def _run(
-        output_names: list[str], feed: dict[str, np.ndarray]
-    ) -> list[np.ndarray]:
-        tensor = feed["input"]
-        _, _, h_, w_ = tensor.shape
-        out = np.zeros((1, 3, h_, w_), dtype=np.float32)
-        out[0, 1, :, :] = 200.0  # green channel
-        return [out]
-
-    session.run.side_effect = _run
-    return session
+from tests.helpers import make_mock_session
 
 
 def _make_style_image_file(path: Path) -> Path:
@@ -82,7 +59,7 @@ def e2e_engine(tmp_path: Path) -> StyleTransferEngine:
         patch("src.core.engine.ort") as mock_ort,
         patch.object(Path, "exists", return_value=True),
     ):
-        mock_ort.InferenceSession.return_value = _make_mock_session()
+        mock_ort.InferenceSession.return_value = make_mock_session(output_colour=(0, 200, 0))
         engine.load_model("e2e-style", Path("dummy/model.onnx"))
     return engine
 

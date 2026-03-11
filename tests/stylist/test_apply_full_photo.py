@@ -8,7 +8,7 @@ The ONNX model is mocked so no real model file is required.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -18,33 +18,7 @@ from src.core.engine import StyleTransferEngine
 from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager
 from src.core.registry import StyleRegistry
-
-
-# ---------------------------------------------------------------------------
-# Helpers — mock ONNX session (same pattern as test_engine.py)
-# ---------------------------------------------------------------------------
-
-def _make_mock_session(
-    output_colour: tuple[int, int, int] = (100, 150, 200)
-) -> MagicMock:
-    session = MagicMock()
-    inp = MagicMock()
-    inp.name = "input"
-    session.get_inputs.return_value = [inp]
-
-    def _run(
-        output_names: list[str], feed: dict[str, np.ndarray]
-    ) -> list[np.ndarray]:
-        tensor = feed["input"]
-        h, w = tensor.shape[2], tensor.shape[3]
-        rgb = np.full((1, 3, h, w), 0.0, dtype=np.float32)
-        rgb[0, 0, :, :] = float(output_colour[0])
-        rgb[0, 1, :, :] = float(output_colour[1])
-        rgb[0, 2, :, :] = float(output_colour[2])
-        return [rgb]
-
-    session.run.side_effect = _run
-    return session
+from tests.helpers import make_mock_session, save_jpeg
 
 
 def _engine_with_candy() -> StyleTransferEngine:
@@ -54,7 +28,7 @@ def _engine_with_candy() -> StyleTransferEngine:
         patch("src.core.engine.ort") as mock_ort,
         patch.object(Path, "exists", return_value=True),
     ):
-        mock_ort.InferenceSession.return_value = _make_mock_session()
+        mock_ort.InferenceSession.return_value = make_mock_session(output_colour=(100, 150, 200))
         engine.load_model("candy", Path("styles/candy/model.onnx"))
     return engine
 
@@ -73,11 +47,6 @@ def engine() -> StyleTransferEngine:
     return _engine_with_candy()
 
 
-def _write_jpeg(path: Path, w: int, h: int) -> None:
-    arr = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
-    Image.fromarray(arr).save(path, format="JPEG", quality=90)
-
-
 # ---------------------------------------------------------------------------
 # Full pipeline tests
 # ---------------------------------------------------------------------------
@@ -87,7 +56,7 @@ def test_load_apply_save_reload_dimensions(
 ) -> None:
     """Load → apply → save → reload must preserve image dimensions."""
     src = tmp_path / "photo.jpg"
-    _write_jpeg(src, 256, 192)
+    save_jpeg(src, size=(256, 192))
 
     img = pm.load(src)
     styled = engine.apply(img, "candy", strength=1.0, tile_size=128, overlap=16)
@@ -105,7 +74,7 @@ def test_save_output_is_valid_jpeg(
 ) -> None:
     """Output file must be readable as a valid JPEG by Pillow."""
     src = tmp_path / "photo.jpg"
-    _write_jpeg(src, 128, 128)
+    save_jpeg(src, size=(128, 128))
 
     img = pm.load(src)
     styled = engine.apply(img, "candy", strength=0.5, tile_size=128, overlap=16)
@@ -121,7 +90,7 @@ def test_pipeline_with_strength_zero_produces_near_original(
 ) -> None:
     """At strength=0 the output should be very close to the original."""
     src = tmp_path / "photo.jpg"
-    _write_jpeg(src, 128, 128)
+    save_jpeg(src, size=(128, 128))
 
     img = pm.load(src)
     result = engine.apply(img, "candy", strength=0.0, tile_size=128, overlap=16)
@@ -137,7 +106,7 @@ def test_thumbnail_pipeline(
 ) -> None:
     """load → thumbnail must produce correct max-bounded size."""
     src = tmp_path / "large.jpg"
-    _write_jpeg(src, 1024, 768)
+    save_jpeg(src, size=(1024, 768))
     img = pm.load(src)
     thumb = pm.thumbnail(img, (256, 256))
     w, h = thumb.size
@@ -180,7 +149,7 @@ def test_apply_various_resolutions(
 ) -> None:
     """Apply must return the correct size for several input resolutions."""
     src = tmp_path / "photo.jpg"
-    _write_jpeg(src, w, h)
+    save_jpeg(src, size=(w, h))
     img = pm.load(src)
     result = engine.apply(img, "candy", strength=1.0, tile_size=128, overlap=16)
     assert result.size == (w, h)

@@ -24,6 +24,8 @@ from src.trainer.vgg_loss import VGGPerceptualLoss
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+_DEFAULT_CHECKPOINT_INTERVAL: int = 5000  # save a .pth checkpoint every N images
+
 
 class COCODatasetNotFoundError(FileNotFoundError):
     """Raised when the MS-COCO dataset directory is absent or contains no images."""
@@ -74,7 +76,7 @@ class StyleTrainer:
         style_weight: float = 1e8,
         content_weight: float = 1e5,
         learning_rate: float = 1e-3,
-        checkpoint_interval: int = 5000,
+        checkpoint_interval: int = _DEFAULT_CHECKPOINT_INTERVAL,
         checkpoint_path: Path | None = None,
         progress_callback: Callable[[int, int, float], None] | None = None,
         max_batches: int | None = None,

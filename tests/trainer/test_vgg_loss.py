@@ -40,11 +40,11 @@ def loss_fn() -> VGGPerceptualLoss:
     return VGGPerceptualLoss().eval()
 
 
-def test_vgg_loss_creates_without_error(loss_fn: VGGPerceptualLoss) -> None:
+def test_vgg_loss_creates_without_error_takes_long(loss_fn: VGGPerceptualLoss) -> None:
     assert loss_fn is not None
 
 
-def test_vgg_weights_are_frozen(loss_fn: VGGPerceptualLoss) -> None:
+def test_vgg_weights_are_frozen_takes_long(loss_fn: VGGPerceptualLoss) -> None:
     for param in loss_fn.extractor.parameters():
         assert not param.requires_grad, "VGG weights must be frozen"
 
@@ -53,13 +53,13 @@ def test_vgg_weights_are_frozen(loss_fn: VGGPerceptualLoss) -> None:
 # VGGPerceptualLoss — compute_style_grams
 # ---------------------------------------------------------------------------
 
-def test_style_grams_returns_four_tensors(loss_fn: VGGPerceptualLoss) -> None:
+def test_style_grams_returns_four_tensors_takes_long(loss_fn: VGGPerceptualLoss) -> None:
     style = torch.rand(1, 3, 64, 64) * 255.0
     grams = loss_fn.compute_style_grams(style)
     assert len(grams) == 4, f"Expected 4 Gram matrices, got {len(grams)}"
 
 
-def test_style_grams_are_finite(loss_fn: VGGPerceptualLoss) -> None:
+def test_style_grams_are_finite_takes_long(loss_fn: VGGPerceptualLoss) -> None:
     style = torch.rand(1, 3, 64, 64) * 255.0
     grams = loss_fn.compute_style_grams(style)
     for i, g in enumerate(grams):
@@ -70,7 +70,7 @@ def test_style_grams_are_finite(loss_fn: VGGPerceptualLoss) -> None:
 # VGGPerceptualLoss — forward losses
 # ---------------------------------------------------------------------------
 
-def test_content_loss_is_positive_scalar(loss_fn: VGGPerceptualLoss) -> None:
+def test_content_loss_is_positive_scalar_takes_long(loss_fn: VGGPerceptualLoss) -> None:
     output = torch.rand(1, 3, 64, 64) * 255.0
     content = torch.rand(1, 3, 64, 64) * 255.0
     style = torch.rand(1, 3, 64, 64) * 255.0
@@ -80,7 +80,7 @@ def test_content_loss_is_positive_scalar(loss_fn: VGGPerceptualLoss) -> None:
     assert float(c_loss) > 0.0, "content_loss must be positive"
 
 
-def test_style_loss_is_positive_scalar(loss_fn: VGGPerceptualLoss) -> None:
+def test_style_loss_is_positive_scalar_takes_long(loss_fn: VGGPerceptualLoss) -> None:
     output = torch.rand(1, 3, 64, 64) * 255.0
     content = torch.rand(1, 3, 64, 64) * 255.0
     style = torch.rand(1, 3, 64, 64) * 255.0
@@ -90,7 +90,7 @@ def test_style_loss_is_positive_scalar(loss_fn: VGGPerceptualLoss) -> None:
     assert float(s_loss) > 0.0, "style_loss must be positive"
 
 
-def test_identical_output_and_content_gives_zero_content_loss(
+def test_identical_output_and_content_gives_zero_content_loss_takes_long(
     loss_fn: VGGPerceptualLoss,
 ) -> None:
     """When output == content, content loss should be ~0."""
@@ -101,7 +101,7 @@ def test_identical_output_and_content_gives_zero_content_loss(
     assert float(c_loss) < 1e-3, f"Content loss for identical images: {float(c_loss)}"
 
 
-def test_losses_are_finite(loss_fn: VGGPerceptualLoss) -> None:
+def test_losses_are_finite_takes_long(loss_fn: VGGPerceptualLoss) -> None:
     output = torch.rand(1, 3, 64, 64) * 255.0
     content = torch.rand(1, 3, 64, 64) * 255.0
     style = torch.rand(1, 3, 64, 64) * 255.0

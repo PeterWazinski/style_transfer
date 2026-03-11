@@ -12,7 +12,7 @@ Verifies that:
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -26,27 +26,7 @@ from src.core.engine import (
 )
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.settings import AppSettings
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_mock_session(raise_oom: bool = False) -> MagicMock:
-    session = MagicMock()
-    inp = MagicMock()
-    inp.name = "input"
-    session.get_inputs.return_value = [inp]
-
-    def _run(output_names: list[str], feed: dict[str, np.ndarray]) -> list[np.ndarray]:
-        if raise_oom:
-            raise MemoryError("Simulated OOM")
-        tensor = feed["input"]
-        h, w = tensor.shape[2], tensor.shape[3]
-        return [np.zeros((1, 3, h, w), dtype=np.float32)]
-
-    session.run.side_effect = _run
-    return session
+from tests.helpers import make_mock_session
 
 
 def _engine_with_mock_style(
@@ -59,7 +39,7 @@ def _engine_with_mock_style(
         patch("src.core.engine.ort") as mock_ort,
         patch.object(Path, "exists", return_value=True),
     ):
-        mock_ort.InferenceSession.return_value = _make_mock_session(raise_oom)
+        mock_ort.InferenceSession.return_value = make_mock_session(raise_oom=raise_oom)
         engine.load_model(style_id, Path("dummy/model.onnx"))
     return engine
 

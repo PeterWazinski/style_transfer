@@ -3,37 +3,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 from PIL import Image
 
 from src.core.engine import StyleModelNotFoundError, StyleTransferEngine
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_mock_session(output_colour: tuple[int, int, int] = (128, 64, 192)) -> MagicMock:
-    """Return a mock ort.InferenceSession that echoes a solid-colour image."""
-    session = MagicMock()
-    inp = MagicMock()
-    inp.name = "input"
-    session.get_inputs.return_value = [inp]
-
-    def _run(output_names: list[str], feed: dict[str, np.ndarray]) -> list[np.ndarray]:
-        tensor = feed["input"]  # [1, 3, H, W]
-        h, w = tensor.shape[2], tensor.shape[3]
-        rgb = np.full((1, 3, h, w), 0.0, dtype=np.float32)
-        rgb[0, 0, :, :] = float(output_colour[0])
-        rgb[0, 1, :, :] = float(output_colour[1])
-        rgb[0, 2, :, :] = float(output_colour[2])
-        return [rgb]
-
-    session.run.side_effect = _run
-    return session
+from tests.helpers import make_mock_session
 
 
 def _engine_with_style(
@@ -48,7 +25,7 @@ def _engine_with_style(
         patch("src.core.engine.ort") as mock_ort,
         patch.object(Path, "exists", return_value=True),
     ):
-        mock_ort.InferenceSession.return_value = _make_mock_session(output_colour)
+        mock_ort.InferenceSession.return_value = make_mock_session(output_colour)
         engine.load_model(style_id, model_path)
     return engine
 

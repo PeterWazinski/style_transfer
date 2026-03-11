@@ -9,6 +9,7 @@ import pytest
 from PIL import Image
 
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
+from tests.helpers import save_jpeg, save_png
 
 
 # ---------------------------------------------------------------------------
@@ -20,45 +21,33 @@ def pm() -> PhotoManager:
     return PhotoManager()
 
 
-def _save_jpeg(path: Path, size: tuple[int, int] = (64, 64)) -> Path:
-    arr = np.random.randint(0, 255, (size[1], size[0], 3), dtype=np.uint8)
-    Image.fromarray(arr).save(path, format="JPEG", quality=95)
-    return path
-
-
-def _save_png(path: Path, size: tuple[int, int] = (64, 64)) -> Path:
-    arr = np.random.randint(0, 255, (size[1], size[0], 3), dtype=np.uint8)
-    Image.fromarray(arr).save(path, format="PNG")
-    return path
-
-
 # ---------------------------------------------------------------------------
 # load — happy paths
 # ---------------------------------------------------------------------------
 
 def test_load_jpeg_returns_rgb_image(tmp_path: Path, pm: PhotoManager) -> None:
-    p = _save_jpeg(tmp_path / "test.jpg")
+    p = save_jpeg(tmp_path / "test.jpg")
     img = pm.load(p)
     assert isinstance(img, Image.Image)
     assert img.mode == "RGB"
 
 
 def test_load_png_returns_rgb_image(tmp_path: Path, pm: PhotoManager) -> None:
-    p = _save_png(tmp_path / "test.png")
+    p = save_png(tmp_path / "test.png")
     img = pm.load(p)
     assert isinstance(img, Image.Image)
     assert img.mode == "RGB"
 
 
 def test_load_preserves_dimensions(tmp_path: Path, pm: PhotoManager) -> None:
-    p = _save_jpeg(tmp_path / "test.jpg", size=(200, 150))
+    p = save_jpeg(tmp_path / "test.jpg", size=(200, 150))
     img = pm.load(p)
     assert img.size == (200, 150)
 
 
 def test_load_jpeg_uppercase_extension(tmp_path: Path, pm: PhotoManager) -> None:
     """Extension check must be case-insensitive."""
-    src = _save_jpeg(tmp_path / "test.jpg")
+    src = save_jpeg(tmp_path / "test.jpg")
     dest = tmp_path / "test.JPG"
     dest.write_bytes(src.read_bytes())
     img = pm.load(dest)
