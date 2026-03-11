@@ -1,9 +1,9 @@
 # Harry Potter Quiz Game — Product Requirements Document
 
-**Version:** 0.1-draft  
+**Version:** 0.2  
 **Date:** 2026-03-11  
 **Author:** Peter Wazinski  
-**Status:** Draft — awaiting stakeholder sign-off
+**Status:** Decisions resolved — ready for implementation
 
 ---
 
@@ -42,16 +42,17 @@ registered users (subject to admin approval).
 ```
 Start screen
   └─ Choose language (EN / DE)
-  └─ Guest play  OR  Log in (Google / GitHub OAuth)
+  └─ Guest play  OR  Log in (Google OAuth)
 
 Round screen
   ├─ Tier badge shown (current level)
   ├─ 10 multiple-choice questions  (4 options each)
-  │    ├─ Optional per-round countdown timer (configurable — default 300 s)
+  │    ├─ Per-tier countdown timer (developer config only — see §12)
   │    └─ Image shown if available (character portrait, book cover, etc.)
   └─ Score summary
         ├─ Pass threshold ≥ 70 %  →  advance to next tier
-        └─ Fail               →  replay same tier  OR  quit
+        └─ Fail (1st attempt)  →  one immediate retry allowed
+             └─ Fail (2nd attempt) →  24-hour cooldown before next try
 
 Progression
   Muggle  →  Student  →  Prefect  →  Auror  →  Headmaster
@@ -196,15 +197,18 @@ python tools/import_questions.py --file questions_tier1.json --approve
 | Appear on leaderboard | ✗ | ✓ |
 | See own history | ✗ | ✓ |
 
-**Authentication:** OAuth 2.0 via Google and/or GitHub.  
+**Authentication:** OAuth 2.0 via **Google only**.  
 Implementation: `Authlib` library + FastAPI; tokens stored as HTTP-only cookies.
+
+**Admin account:** Seeded automatically on first DB migration from the `ADMIN_EMAIL` and `ADMIN_NAME` environment variables; no CLI command needed.
 
 ---
 
 ## 10. Leaderboard
 
 - One leaderboard per tier (top 10 globally).
-- Shows: rank, display name, score, date achieved.
+- Shows: rank, display name, score, date achieved, **attempts taken** (1st try vs. retry).
+- Number of retries and cooldown expiry stored per `(user, tier)` in the DB.
 - Refreshed on every game completion.
 - Guest scores shown locally only ("Your best: X pts") — not persisted server-side.
 
@@ -235,24 +239,30 @@ Accessed at `/admin` (protected by admin role flag in DB).
 | Web framework | **FastAPI** | Fast, async, OpenAPI docs built-in |
 | UI framework | **NiceGUI** (≥ 1.4) | Pure Python, reactive, no Node.js |
 | ORM | **SQLModel** (= SQLAlchemy + Pydantic) | Type-safe, integrates with FastAPI |
-| Auth | **Authlib** + OAuth 2.0 | Google / GitHub login |
-| DB (dev) | SQLite | Zero-config local development |
-| DB (prod) | **Supabase** free tier (PostgreSQL) | 500 MB free, persistent |
+| Auth | **Authlib** + OAuth 2.0 | Google login only |
+| DB (dev + prod) | **SQLite** (WAL mode) | Single file, zero-config, same setup locally and on Render |
 | Image storage | Wikimedia Commons URLs | Free, no upload needed for most images |
 | i18n | **Babel** | Locale-aware date/number formatting |
+| Timer config | `config.py` constants | Developer-only; `ROUND_SECONDS = {1:300, 2:360, 3:420, 4:480, 5:600}` |
 
-### Free hosting
+### Hosting
 
-| Service | Role | Free tier limits |
+| Service | Role | Notes |
 |---|---|---|
-| **Render.com** | Python web service (app server) | 750 hrs/month; sleeps after 15 min idle |
-| **Supabase** | PostgreSQL database | 500 MB storage, unlimited API calls |
+| **Render.com** free tier | Python web service + SQLite file | 750 hrs/month; sleeps after 15 min idle |
 | **Cloudinary** *(optional)* | User-uploaded question images | 25 credits/month free |
-| **UptimeRobot** | Keep-warm ping every 5 min | Free for 50 monitors |
 
-> **Cold-start note:** Render free tier sleeps after 15 min of inactivity.
-> The first request after sleep takes ~30 s.  A free UptimeRobot monitor
-> (5-min interval) keeps the instance warm at zero cost.
+> **Deployment philosophy:** Keep it as simple as possible — single hoster, single
+> SQLite file (dev and prod identical).  The SQLite file is stored in a Render
+> persistent-disk volume so it survives redeploys.
+>
+> **Cold-start note:** The free tier sleeps after 15 min of inactivity; the first
+> request after waking takes ~30–60 s.  This is acceptable.  No keep-warm service
+> is needed — Render free tier suffices.
+>
+> **Scaling note:** SQLite handles hundreds of concurrent readers well via WAL mode.
+> If the app ever outgrows SQLite (thousands of simultaneous users), migrate to
+> PostgreSQL at that point; SQLModel/SQLAlchemy makes this a one-line config change.
 
 ### Proposed repository layout
 
@@ -310,16 +320,16 @@ harry_potter_quiz/
 
 ---
 
-## 15. Open Questions
+## 15. Resolved Decisions
 
-| # | Question | Owner | Due |
-|---|----------|-------|-----|
-| OQ-1 | OAuth providers: Google only, or also GitHub? | Peter | — |
-| OQ-2 | Failed rounds: unlimited retries or cooldown before retry? | Peter | — |
-| OQ-3 | Admin account creation: seeded from env var on first migration, or CLI command? | Peter | — |
-| OQ-4 | Timer default 300 s per round — confirm or adjust? | Peter | — |
-| OQ-5 | Pass thresholds (7/7/7/8/9 out of 10) — confirm? | Peter | — |
-| OQ-6 | UptimeRobot keep-warm acceptable, or pay Render Starter ($7/mo) for always-on? | Peter | — |
+| # | Question | Decision |
+|---|----------|---------|
+| OQ-1 | OAuth providers | **Google only** — no GitHub |
+| OQ-2 | Failed round retry policy | **1 immediate retry**; after 2nd failure a **24-hour cooldown** is enforced before the next attempt. Attempt count and cooldown expiry stored in DB and shown on leaderboard. |
+| OQ-3 | Admin account creation | **Seeded from env vars** (`ADMIN_EMAIL`, `ADMIN_NAME`) on first migration |
+| OQ-4 | Per-round timer | **Developer-only config** in `config.py`: Tier 1 = 5 min, Tier 2 = 6 min, Tier 3 = 7 min, Tier 4 = 8 min, Tier 5 = 10 min |
+| OQ-5 | Pass thresholds | **Confirmed**: 7 / 7 / 7 / 8 / 9 out of 10 |
+| OQ-6 | Hosting & DB | **Render.com free tier + SQLite** for both dev and prod. Cold-start sleep is acceptable. No Supabase, no external DB service. Keep deployment as simple as possible. |
 
 ---
 
@@ -332,11 +342,11 @@ harry_potter_quiz/
 | S2 | 2 days | FastAPI game endpoints: start session, get question, submit answer, score summary |
 | S3 | 2 days | NiceGUI UI: start page, round page (question + timer), result page (EN only first) |
 | S4 | 1 day | DE translation strings + language switcher |
-| S5 | 2 days | OAuth login (Google), guest fallback, local-storage session |
-| S6 | 1 day | Leaderboard endpoint + UI page |
+| S5 | 2 days | OAuth login (Google only), guest fallback, local-storage session, admin seed from env vars |
+| S6 | 1 day | Leaderboard endpoint + UI page (includes attempt count column) |
 | S7 | 2 days | Admin dashboard: question approval queue, bulk import, user list |
 | S8 | 1 day | Image support: Wikimedia URL field displayed in question card |
-| S9 | 1 day | Supabase prod DB + Render deploy + UptimeRobot keep-warm |
+| S9 | 1 day | Render deploy + SQLite persistent disk volume (same DB for dev + prod) |
 | S10 | 1 day | End-to-end tests, accessibility pass, README |
 
 **Estimated total:** ~16 developer-days for a complete v1.
