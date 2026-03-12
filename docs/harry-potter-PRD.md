@@ -45,6 +45,7 @@ Start screen
 
 Round screen
   ├─ Tier badge shown (current level)
+  ├─ Short tier briefing shown before questions start (what type of questions to expect)
   ├─ 10 multiple-choice questions  (4 options each)
   │    ├─ Countdown timer is always enabled and visible in round view
   │    └─ Image shown if available (character portrait, book cover, etc.)
@@ -73,8 +74,8 @@ End screen
 | 1 | 🧙 Muggle | 10 | 7 / 10 | Very basic: main characters, books order, core spells |
 | 2 | 🎓 Student | 10 | 7 / 10 | Houses, creatures, Hogwarts layout, supporting cast |
 | 3 | 🏅 Prefect | 10 | 7 / 10 | History of Magic, potions, detailed plot events |
-| 4 | ⚡ Auror | 10 | 8 / 10 | Obscure characters, magical law, dates, exact quotes |
-| 5 | 🎓 Headmaster | 10 | 9 / 10 | Deep lore, J.K. Rowling interviews, Pottermore/Wizarding World canon |
+| 4 | ⚡ Auror | 10 | 8 / 10 | Film-focused: actors, directors, studio, and behind-the-scenes production gossip |
+| 5 | 🎓 Headmaster | 10 | 9 / 10 | Follow-up deep lore: *Harry Potter and the Cursed Child*, *Fantastic Beasts*, and J.K. Rowling interviews |
 
 A player who completes **all 5 tiers** in one session receives the
 **"Order of Merlin, First Class"** achievement.
@@ -133,9 +134,10 @@ DIFFICULTY_NOTES:
 - Tier 1: Very basic facts known to anyone who watched the films once.
 - Tier 2: Knowledge of all 7 books at a casual level.
 - Tier 3: Careful reader familiar with all plot details.
-- Tier 4: Fan who has read companion books (Fantastic Beasts, Quidditch Through the Ages).
-- Tier 5: Deep-lore fan who has read Pottermore/Wizarding World articles and
-          J.K. Rowling interviews.
+- Tier 4: Fan who has watched all the films; ask about actors, directors, film studio,
+          and production gossip.
+- Tier 5: Deep-lore fan who has read follow-up books (*Harry Potter and the Cursed Child*,
+          *Fantastic Beasts*) and J.K. Rowling interviews.
 
 Rules:
 1. Each question has exactly 4 answer options (A, B, C, D).
@@ -332,7 +334,7 @@ harry_potter_quiz/
 | S0 | 1 day | Repo scaffold, DB models (`Question`, `User`, `Score`), Alembic migrations, SQLite dev DB |
 | S1 | 2 days | `tools/import_questions.py` + run Copilot prompt for all 5 tiers → load ~500 questions |
 | S2 | 2 days | FastAPI game endpoints: start session, get question, submit answer, score summary |
-| S3 | 2 days | NiceGUI UI: start page, round page (question + timer), result page (EN only first) |
+| S3 | 2 days | NiceGUI UI: start page, round page (tier briefing + question + timer), result page (EN only first) |
 | S4 | 1 day | DE translation strings + language switcher |
 | S5 | 2 days | OAuth login (Google only), guest fallback, local-storage session, admin seed from env vars |
 | S6 | 1 day | Leaderboard endpoint + UI page (includes attempt count column) |
