@@ -196,7 +196,9 @@ python tools/import_questions.py --file questions_tier1.json --file questions_ti
 **Authentication:** OAuth 2.0 via **Google only**.  
 Implementation: `Authlib` library + FastAPI; tokens stored as HTTP-only cookies.
 
-**Admin account:** Seeded automatically on first DB migration from the `ADMIN_EMAIL` and `ADMIN_NAME` environment variables; no CLI command needed.
+**Admin account:** Seeded automatically on first DB migration from environment variables:
+- `ADMIN_EMAIL = p.wazinski.dt@gmail.com`  (the only admin user for tests and production)
+- `ADMIN_NAME = Peter Wazinski`
 
 ---
 
@@ -320,7 +322,7 @@ harry_potter_quiz/
 |---|----------|---------|
 | OQ-1 | OAuth providers | **Google only** — no GitHub |
 | OQ-2 | Failed round retry policy | **1 immediate retry**; after 2nd failure a **24-hour cooldown** is enforced before the next attempt. Attempt count and cooldown expiry stored in DB and shown on leaderboard. |
-| OQ-3 | Admin account creation | **Seeded from env vars** (`ADMIN_EMAIL`, `ADMIN_NAME`) on first migration |
+| OQ-3 | Admin account creation | **Seeded from env vars** on first migration: `ADMIN_EMAIL = p.wazinski.dt@gmail.com` (sole admin), `ADMIN_NAME = Peter Wazinski` |
 | OQ-4 | Per-round timer | **Always enabled and visible** in round view. Config in `config.py`: Tier 1 = 5 min, Tier 2 = 6 min, Tier 3 = 7 min, Tier 4 = 8 min, Tier 5 = 10 min |
 | OQ-5 | Pass thresholds | **Confirmed**: 7 / 7 / 7 / 8 / 9 out of 10 |
 | OQ-6 | Hosting & DB | **Render.com free tier + SQLite** for both dev and prod. Cold-start sleep is acceptable. No Supabase, no external DB service. Keep deployment as simple as possible. |
