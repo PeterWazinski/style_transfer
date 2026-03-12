@@ -12,8 +12,7 @@
 A bilingual (English / German) web-based quiz game set in the Harry Potter universe.
 Players progress through five proficiency tiers by correctly answering sets of
 multiple-choice questions of increasing difficulty.  The question bank (~500 questions)
-is bootstrapped via a structured Microsoft Copilot prompt and can be extended by
-registered users (subject to admin approval).
+is bootstrapped via a structured Microsoft Copilot prompt and curated by admins.
 
 ---
 
@@ -47,7 +46,7 @@ Start screen
 Round screen
   ├─ Tier badge shown (current level)
   ├─ 10 multiple-choice questions  (4 options each)
-  │    ├─ Per-tier countdown timer (developer config only — see §12)
+  │    ├─ Countdown timer is always enabled and visible in round view
   │    └─ Image shown if available (character portrait, book cover, etc.)
   └─ Score summary
         ├─ Pass threshold ≥ 70 %  →  advance to next tier
@@ -59,7 +58,9 @@ Progression
   (tier 1)   (tier 2)   (tier 3)   (tier 4)    (tier 5)
 
 End screen
-  ├─ Achieved proficiency badge + certificate text
+  ├─ Achieved proficiency badge
+  ├─ Logged-in users: downloadable printable PDF certificate
+  │    └─ playful Harry-Potter-themed layout with icons and thumbnails
   └─ Leaderboard position (if logged in)
 ```
 
@@ -84,7 +85,7 @@ A player who completes **all 5 tiers** in one session receives the
 
 - +10 points per correct answer
 - −0 points for wrong answer (no penalty — encourages guessing)
-- Time bonus: +1 point per second remaining in round (only if timer is enabled)
+- Time bonus: +1 point per second remaining in round (timer always enabled)
 - Running total displayed on every question screen
 - High scores saved per user account; top-10 global leaderboard per tier
 
@@ -109,8 +110,8 @@ Each question is stored as a JSON record:
   "explanation_en": "...",
   "explanation_de": "...",
   "image_url": null,                // optional Wikimedia URL
-  "source": "copilot-generated",   // or "user-submitted"
-  "status": "approved"             // "pending" | "approved" | "rejected"
+  "source": "copilot-generated",   // or "admin-created" | "admin-imported"
+  "status": "approved"             // always approved in v1 workflow
 }
 ```
 
@@ -161,19 +162,12 @@ Output format (for each question):
 
 ---
 
-A helper script `tools/import_questions.py` will validate the JSON output and bulk-load
-it into the database.  Run it per tier file:
+A helper script `tools/import_questions.py` will validate JSON output and bulk-load
+one or more files into the database.  Each uploaded/imported file appends questions:
 
 ```bash
-python tools/import_questions.py --file questions_tier1.json --approve
+python tools/import_questions.py --file questions_tier1.json --file questions_tier2.json
 ```
-
-### 7.3 User-contributed questions
-
-- Any logged-in user can submit a question via a form in the UI.
-- Submitted questions receive `status = "pending"`.
-- Admin reviews in the Admin Dashboard; approves → `status = "approved"`.
-- Pending questions **never** appear in a live game round.
 
 ---
 
@@ -193,9 +187,9 @@ python tools/import_questions.py --file questions_tier1.json --approve
 |---|---|---|
 | Play game | ✓ | ✓ |
 | Progress saved between sessions | Local storage only (lost on clear) | ✓ Database |
-| Submit questions | ✗ | ✓ (pending approval) |
 | Appear on leaderboard | ✗ | ✓ |
 | See own history | ✗ | ✓ |
+| Download printable PDF certificate | ✗ | ✓ |
 
 **Authentication:** OAuth 2.0 via **Google only**.  
 Implementation: `Authlib` library + FastAPI; tokens stored as HTTP-only cookies.
@@ -220,10 +214,8 @@ Accessed at `/admin` (protected by admin role flag in DB).
 
 | Feature | Description |
 |---|---|
-| Question list | Filterable by tier / status / topic |
-| Approve / reject | Review pending user submissions with inline edit |
-| Edit question | Fix typos, update answer, change tier |
-| Bulk import | Upload the Copilot-generated JSON files |
+| Editable question list | Filterable by tier; fix typos, update answer, change tier, delete question, add a new question |
+| Bulk import | Upload multiple Copilot-generated JSON files; each file appends questions |
 | User list | View registered users, grant / revoke admin role |
 | Stats | Questions per tier, approval rate, active players |
 
@@ -243,7 +235,7 @@ Accessed at `/admin` (protected by admin role flag in DB).
 | DB (dev + prod) | **SQLite** (WAL mode) | Single file, zero-config, same setup locally and on Render |
 | Image storage | Wikimedia Commons URLs | Free, no upload needed for most images |
 | i18n | **Babel** | Locale-aware date/number formatting |
-| Timer config | `config.py` constants | Developer-only; `ROUND_SECONDS = {1:300, 2:360, 3:420, 4:480, 5:600}` |
+| Timer config | `config.py` constants | Always enabled in round view; `ROUND_SECONDS = {1:300, 2:360, 3:420, 4:480, 5:600}` |
 
 ### Hosting
 
@@ -327,7 +319,7 @@ harry_potter_quiz/
 | OQ-1 | OAuth providers | **Google only** — no GitHub |
 | OQ-2 | Failed round retry policy | **1 immediate retry**; after 2nd failure a **24-hour cooldown** is enforced before the next attempt. Attempt count and cooldown expiry stored in DB and shown on leaderboard. |
 | OQ-3 | Admin account creation | **Seeded from env vars** (`ADMIN_EMAIL`, `ADMIN_NAME`) on first migration |
-| OQ-4 | Per-round timer | **Developer-only config** in `config.py`: Tier 1 = 5 min, Tier 2 = 6 min, Tier 3 = 7 min, Tier 4 = 8 min, Tier 5 = 10 min |
+| OQ-4 | Per-round timer | **Always enabled and visible** in round view. Config in `config.py`: Tier 1 = 5 min, Tier 2 = 6 min, Tier 3 = 7 min, Tier 4 = 8 min, Tier 5 = 10 min |
 | OQ-5 | Pass thresholds | **Confirmed**: 7 / 7 / 7 / 8 / 9 out of 10 |
 | OQ-6 | Hosting & DB | **Render.com free tier + SQLite** for both dev and prod. Cold-start sleep is acceptable. No Supabase, no external DB service. Keep deployment as simple as possible. |
 
@@ -344,8 +336,8 @@ harry_potter_quiz/
 | S4 | 1 day | DE translation strings + language switcher |
 | S5 | 2 days | OAuth login (Google only), guest fallback, local-storage session, admin seed from env vars |
 | S6 | 1 day | Leaderboard endpoint + UI page (includes attempt count column) |
-| S7 | 2 days | Admin dashboard: question approval queue, bulk import, user list |
-| S8 | 1 day | Image support: Wikimedia URL field displayed in question card |
+| S7 | 2 days | Admin dashboard: editable question list, add/delete/edit question, multi-file bulk import, user list, stats |
+| S8 | 1 day | Image support in question cards + printable PDF certificate for logged-in users |
 | S9 | 1 day | Render deploy + SQLite persistent disk volume (same DB for dev + prod) |
 | S10 | 1 day | End-to-end tests, accessibility pass, README |
 
