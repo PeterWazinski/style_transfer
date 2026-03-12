@@ -217,7 +217,7 @@ Accessed at `/admin` (protected by admin role flag in DB).
 | Feature | Description |
 |---|---|
 | Editable question list | Filterable by tier; fix typos, update answer, change tier, delete question, add a new question |
-| Bulk import | Upload multiple Copilot-generated JSON files; each file appends questions |
+| Bulk import | Upload multiple Copilot-generated JSON files. Optional checkbox **"Replace all questions"** deletes entire question database before importing; confirmation popup asks *"Do you really want to delete the entire database?"* requiring explicit confirmation before proceeding. Default: append mode (no deletion) |
 | User list | View registered users, grant / revoke admin role |
 | Stats | Questions per tier, approval rate, active players |
 
@@ -338,7 +338,7 @@ harry_potter_quiz/
 | S4 | 1 day | DE translation strings + language switcher |
 | S5 | 2 days | OAuth login (Google only), guest fallback, local-storage session, admin seed from env vars |
 | S6 | 1 day | Leaderboard endpoint + UI page (includes attempt count column) |
-| S7 | 2 days | Admin dashboard: editable question list, add/delete/edit question, multi-file bulk import, user list, stats |
+| S7 | 2 days | Admin dashboard: editable question list, add/delete/edit question, multi-file bulk import with optional "replace all" and confirmation popup, user list, stats |
 | S8 | 1 day | Image support in question cards + printable PDF certificate for logged-in users |
 | S9 | 1 day | Render deploy + SQLite persistent disk volume (same DB for dev + prod) |
 | S10 | 1 day | End-to-end tests, accessibility pass, README |
