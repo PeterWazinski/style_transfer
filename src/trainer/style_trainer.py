@@ -73,7 +73,7 @@ class StyleTrainer:
         batch_size: int = 4,
         image_size: int = 256,
         style_size: int | None = None,
-        style_weight: float = 1e8,
+        style_weight: float = 1e10,
         content_weight: float = 1e5,
         learning_rate: float = 1e-3,
         checkpoint_interval: int = _DEFAULT_CHECKPOINT_INTERVAL,

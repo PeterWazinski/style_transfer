@@ -128,10 +128,10 @@ class TransformerNet(nn.Module):
             x: Float tensor of shape [B, 3, H, W] in range [0, 255].
 
         Returns:
-            Styled tensor of shape [B, 3, H, W] in range [0, 255].
+            Styled tensor of shape [B, 3, H, W] (raw, unclamped).
+            Clamp to [0, 255] only at inference / ONNX-export time.
         """
         out = self.encoder(x)
         out = self.residuals(out)
         out = self.decoder(out)
-        # Clamp to valid pixel range
-        return torch.clamp(out, 0.0, 255.0)
+        return out

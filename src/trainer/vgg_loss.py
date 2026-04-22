@@ -45,7 +45,7 @@ def gram_matrix(feature: torch.Tensor) -> torch.Tensor:
 #   relu3_3 → index 15   ← used for content loss too
 #   relu4_3 → index 22
 _STYLE_LAYERS: tuple[int, ...] = (3, 8, 15, 22)
-_CONTENT_LAYER: int = 15
+_CONTENT_LAYER: int = 8  # relu2_2 — matches yakhyo reference (was relu3_3 = 15)
 
 
 class VGGFeatureExtractor(nn.Module):
@@ -123,8 +123,8 @@ class VGGPerceptualLoss(nn.Module):
         out_features = self.extractor(out_norm)
         con_features = self.extractor(con_norm)
 
-        # Content loss: MSE at relu3_3 (index 2 in our slice list)
-        content_loss: torch.Tensor = F.mse_loss(out_features[2], con_features[2].detach())
+        # Content loss: MSE at relu2_2 (index 1 in our slice list)
+        content_loss: torch.Tensor = F.mse_loss(out_features[1], con_features[1].detach())
 
         # Style loss: Gram MSE across all 4 layers
         # Expand style_gram from [1, C, C] to [B, C, C] to avoid broadcasting warning.
