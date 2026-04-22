@@ -1,6 +1,6 @@
 # Fix Style Trainer — Implementation Roadmap
 
-**Status:** Phase 1 (P1-1, P1-2, P1-3) complete — P1-4 and Phase 2 in progress — Phase 5 design decisions recorded  
+**Status:** Phase 1 complete — Phase 2 complete — Phase 3 (Kaggle validation) next  
 **Created:** 2026-04-22  
 **Problem:** Newly trained styles show no visible effect on photos. Analysis notebook gives false-positive verdicts for good style images.
 
@@ -24,16 +24,16 @@
 - [x] **P1-1** `src/trainer/transformer_net.py` — Removed `torch.clamp(out, 0.0, 255.0)` from `TransformerNet.forward()`. Returns raw `out`. Clamp at inference/ONNX-export only.
 - [x] **P1-2** `src/trainer/vgg_loss.py` — Content layer changed from `relu3_3` to `relu2_2`: `_CONTENT_LAYER = 8`; `forward()` now uses `out_features[1]` / `con_features[1]`.
 - [x] **P1-3** `src/trainer/style_trainer.py` — Default `style_weight` changed `1e8` → `1e10`.
-- [ ] **P1-4** `docs/kaggle_style_training.ipynb` — Update `STYLE_WEIGHT` constant to `1e10`. Confirm epoch count gives ≥ 40,000 images.
+- [x] **P1-4** `docs/kaggle_style_training.ipynb` — `STYLE_WEIGHT` hardcoded to `1e10` (overrides texture-analysis recommendation). CLI example updated to `--style-weight 1e10`. Epoch count = 2 × 83k = 166k images ≥ 40k ✓.
 
 ---
 
 ## Phase 2 — Fix the analysis and smoke-test notebook
 
-- [ ] **P2-1** `_smoke_sync()` — Replace `_compute_signal_frac(sw_base, ...)` with a fixed `SIGNAL_TEST_SW = 1e10` as baseline.
-- [ ] **P2-2** Auto-calibration cap — Remove implicit upper cap on `sw_final` so it can scale to `1e10`.
-- [ ] **P2-3** `IntSlider` default — Change from `100` → `500` batches. Add UI note that < 300 CPU batches is unreliable.
-- [ ] **P2-4** Smoke-test output — Add note that definitive validation needs a 2000-batch Kaggle GPU run (~10 min).
+- [x] **P2-1** `_smoke_sync()` — Added `SIGNAL_TEST_SW: float = 1e10` constant; `_compute_signal_frac()` now called with `SIGNAL_TEST_SW` instead of `sw_base` (which was capped at 1e9).
+- [x] **P2-2** Auto-calibration cap removed — `sw_final` starts at `SIGNAL_TEST_SW`; scale-up expressions use `SIGNAL_TEST_SW` as base so result is never capped below 1e10.
+- [x] **P2-3** `IntSlider` default changed `100` → `500`; max raised to 2000; step 20 → 50. Go/no-go text updated to reference 500 batches.
+- [x] **P2-4** CPU diagnostic note added after smoke-test verdict: “CPU smoke test is diagnostic only — for definitive results run 2000 batches on Kaggle GPU (≈10 min on T4).”
 
 ---
 
