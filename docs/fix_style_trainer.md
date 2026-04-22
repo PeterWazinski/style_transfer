@@ -1,6 +1,6 @@
 # Fix Style Trainer — Implementation Roadmap
 
-**Status:** Phase 1 (P1-1, P1-2, P1-3) complete — P1-4 and Phase 2 in progress  
+**Status:** Phase 1 (P1-1, P1-2, P1-3) complete — P1-4 and Phase 2 in progress — Phase 5 design decisions recorded  
 **Created:** 2026-04-22  
 **Problem:** Newly trained styles show no visible effect on photos. Analysis notebook gives false-positive verdicts for good style images.
 
@@ -67,7 +67,7 @@
 
 ---
 
-## Phase 5 — Refactor `docs/kaggle_style_training.ipynb` into cockpit + helper  *(proposal for review)*
+## Phase 5 — Refactor `docs/kaggle_style_training.ipynb` into cockpit + helper
 
 ### Problem
 
@@ -80,18 +80,30 @@ The Kaggle notebook has grown to 8 code cells (~12,600 chars) embedding substant
 
 This makes the notebook hard to test locally and hard to maintain. None of it can be run from the command line without copy-pasting.
 
+### Design decisions
+
+| # | Decision |
+|---|----------|
+| Location | `scripts/kaggle_training_helper.py` — runs on Kaggle after repo clone, no install step needed |
+| Shared analyser | Move `_analyse_style` / `_recommend` to `src/trainer/style_analyser.py` (importable module). Both notebooks import from there. Zero duplication. |
+| Config persistence | `TrainingConfig` saved as `config.json` next to `model.pth` after training. Resume reads config automatically — no need to re-enter weights. |
+
 ### Proposed target structure
 
 ```
+src/trainer/
+  style_analyser.py           ← new: _analyse_style, _recommend (shared by all callers)
 scripts/
-  kaggle_training_helper.py   ← new: all backend logic + argparse CLI
+  kaggle_training_helper.py   ← new: TrainingConfig, KaggleStyleRunner, argparse CLI
 docs/
-  kaggle_style_training.ipynb ← renamed cockpit (thin cells, imports only)
+  kaggle_style_training.ipynb ← cockpit only (~30 lines of code total)
 ```
 
 ### `scripts/kaggle_training_helper.py` — class + CLI design
 
 ```python
+from src.trainer.style_analyser import analyse_style, recommend_weights  # shared module
+
 @dataclass
 class TrainingConfig:
     style_image:    pathlib.Path
@@ -106,14 +118,18 @@ class TrainingConfig:
     smoke_batches:  int   = 200
     device:         str   = "cuda"
 
+    def save(self, out_dir: pathlib.Path) -> None:   # writes config.json
+    @classmethod
+    def load(cls, out_dir: pathlib.Path) -> "TrainingConfig":  # reads config.json
+
 class KaggleStyleRunner:
     def __init__(self, cfg: TrainingConfig): ...
-    def verify_environment(self) -> None     # GPU, COCO, internet checks
-    def analyse_style(self) -> dict          # texture metrics + weight recommendation
-    def run_smoke_test(self) -> dict         # returns {mean_diff, color_shift, verdict}
-    def run_full_training(self) -> None      # spawns main_style_trainer.py subprocess
-    def resume_training(self) -> None        # finds latest .ckpt_*.pth, resumes
-    def package_output(self) -> pathlib.Path # copy to /kaggle/output/, create zip
+    def verify_environment(self) -> None      # GPU, COCO, internet checks
+    def analyse_style(self) -> dict           # delegates to src.trainer.style_analyser
+    def run_smoke_test(self) -> dict          # returns {mean_diff, color_shift, verdict}
+    def run_full_training(self) -> None       # spawns main_style_trainer.py subprocess; saves config.json
+    def resume_training(self) -> None         # loads config.json, finds latest .ckpt_*.pth
+    def package_output(self) -> pathlib.Path  # copy to /kaggle/output/, create zip
 ```
 
 CLI entry point (each command calls one method):
@@ -148,25 +164,46 @@ runner.analyse_style()
 |---|---|---||
 | Notebook code lines | ~130 | ~30 |
 | Testable without notebook | No | Yes (`pytest` + CLI) |
-| Duplicate logic with style_analysis.ipynb | Yes (`_analyse_style`, `_recommend`) | No (shared import) |
+| Duplicate `_analyse_style` logic | Yes (2 notebooks) | No (`src/trainer/style_analyser.py`) |
+| Resume requires re-entering weights | Yes | No (`config.json` auto-loaded) |
 | CLI smoke test for local dev | No | `python scripts/kaggle_training_helper.py smoke --style ...` |
 
 ### Files to create/modify
 
-- [ ] **P5-1** Create `scripts/kaggle_training_helper.py` — `TrainingConfig` dataclass + `KaggleStyleRunner` class + argparse `main()` CLI
-- [ ] **P5-2** Delete `_analyse_style()` / `_recommend()` from `docs/kaggle_style_training.ipynb` Cell 4 — replace with `runner.analyse_style()`
-- [ ] **P5-3** Collapse Cell 5 (smoke test) to `runner.run_smoke_test()` call
-- [ ] **P5-4** Collapse Cell 6 (full train) to `runner.run_full_training()` call
-- [ ] **P5-5** Collapse Cell 7 (preview + package) to `runner.package_output()` call
-- [ ] **P5-6** Collapse Cell 8 (resume) to `runner.resume_training()` call
-- [ ] **P5-7** Move duplicate `_analyse_style` / `_recommend` from `docs/style_analysis.ipynb` to import from `kaggle_training_helper` (or a shared `src/trainer/style_analyser.py`)
-- [ ] **P5-8** Add unit tests for `KaggleStyleRunner.analyse_style()` and `run_smoke_test()` (mock `StyleTrainer`)
+- [ ] **P5-1** Create `src/trainer/style_analyser.py` — `analyse_style(path) -> dict` and `recommend_weights(metrics) -> tuple[float, float, str]`. Extract from both notebooks.
+- [ ] **P5-2** Create `scripts/kaggle_training_helper.py` — `TrainingConfig` dataclass (with `save()`/`load()` JSON methods) + `KaggleStyleRunner` class + argparse `main()` CLI
+- [ ] **P5-3** Refactor `docs/kaggle_style_training.ipynb` Cell 4 — remove `_analyse_style` / `_recommend`, replace with `runner.analyse_style()`
+- [ ] **P5-4** Collapse Cell 5 (smoke test) to `runner.run_smoke_test()` call
+- [ ] **P5-5** Collapse Cell 6 (full train) to `runner.run_full_training()` call (saves `config.json`)
+- [ ] **P5-6** Collapse Cell 7 (preview + package) to `runner.package_output()` call
+- [ ] **P5-7** Collapse Cell 8 (resume) to `runner.resume_training()` call (reads `config.json` automatically)
+- [ ] **P5-8** Update `docs/style_analysis.ipynb` to import `analyse_style` / `recommend_weights` from `src.trainer.style_analyser` instead of defining them inline
+- [ ] **P5-9** Add unit tests for `style_analyser.py` functions and `KaggleStyleRunner.analyse_style()` (mock `StyleTrainer` for smoke-test test)
 
 ### Open questions for review
 
 1. **Location of helper**: `scripts/` (runs on Kaggle too) vs `src/kaggle/` (installable) — recommend `scripts/` since Kaggle clones the repo anyway.
 2. **Shared analyser**: duplicate `_analyse_style` logic exists in both notebooks. Should it move to `src/trainer/style_analyser.py` so both notebooks import it? Recommend yes.
 3. **Config persistence**: should `TrainingConfig` be saved as `config.json` next to the output model so resume is automatic? Recommend yes.
+
+---
+
+## Recommended phase sequence
+
+```
+P1-4  →  P2  →  P3 (Kaggle validation)  →  P5 (refactor)  →  P4 (close out)
+```
+
+**Rationale:**
+
+| Step | Why before P5 / not after |
+|---|---|
+| P1-4 first | Tiny fix (1 line in Kaggle notebook). Gets the notebook correct before any validation. |
+| P2 first | Fixes `style_analysis.ipynb` signal test so local pre-checks are trustworthy. |
+| P3 before P5 | Validates the bug fixes on real Kaggle GPU. Refactoring on *proven* working code is much safer. If P3 fails after P5 it is harder to tell whether the refactor introduced a regression. |
+| P5 before P4 | Refactor produces the clean codebase worth tagging. P4 (git tag, model regeneration) is the final ceremony on polished code. |
+
+**Do not do P5 before P3.** A structural refactor moves ~130 lines into a new class. If the Kaggle smoke test fails after that it becomes ambiguous whether the training fix or the refactor broke it.
 
 ---
 
