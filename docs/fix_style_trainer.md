@@ -1,6 +1,6 @@
 # Fix Style Trainer — Implementation Roadmap
 
-**Status:** Phase 1 complete — Phase 2 complete — Phase 3 in progress — Phase 5 complete  
+**Status:** Phase 1 ✅ — Phase 2 ✅ — Phase 3 waiting for Kaggle run — Phase 4 pending — Phase 5 ✅  
 **Created:** 2026-04-22  
 **Problem:** Newly trained styles show no visible effect on photos. Analysis notebook gives false-positive verdicts for good style images.
 
@@ -41,27 +41,26 @@
 
 - [x] **P3-1** Run 2000-batch Kaggle smoke test: SW=1e10, CW=1e5, size=256, batch=4 on `candy.jpg`. **mean_diff=57.0** — ✓ GOOD (threshold 20). Colour shift confirmed.
 - [x] **P3-2** Colour shift confirmed → launched full training (2 epochs ≈ 166k images). *(training running on Kaggle)*
-- [ ] **P3-3** Still < 0.05 → switch content layer to `relu2_2` (P1-2) and re-test.
-- [ ] **P3-4** Apply trained ONNX to 3 real photos — verify style visible to naked eye.
+- [n/a] **P3-3** ~~Still < 0.05 → switch content layer~~ — N/A, smoke test passed with mean_diff=57 (threshold 20).
+- [ ] **P3-4** ⏳ **Waiting** — apply trained ONNX to 3 real photos once Kaggle run finishes; verify style visible to naked eye.
 
 ---
 
 ## Phase 4 — Commit, regenerate models, close out
 
-- [ ] **P4-1** Commit: `fix: match yakhyo style_weight 1e10, relu2_2 content layer, remove training clamp`
-- [ ] **P4-2** Run `python scripts/setup_models.py` for each new style to regenerate `model.onnx` and `preview.jpg`.
-- [ ] **P4-3** Remove diagnostic tag `style-trainer-issues` once all phases pass.
-- [ ] **P4-4** Add `fix-complete` git tag after successful visual validation.
+- [x] **P4-1** Fix commits done: `322452a` (P1), `acc97e0` (P2), `82ae50e` (P5).
+- [ ] **P4-2** ⏳ Run `python scripts/setup_models.py` for each new style to regenerate `model.onnx` and `preview.jpg`. *(after P3-4)*
+- [ ] **P4-3** ⏳ Remove diagnostic tag `style-trainer-issues` once all phases pass.
+- [ ] **P4-4** ⏳ Add `fix-complete` git tag after successful visual validation (P3-4).
 
 ---
 
 ## Verification checklist
 
-- [ ] Signature check: `style_weight=1e10` in `StyleTrainer.train`
-- [ ] Cell 9 on `candy.jpg` at SW=1e10 → signal fraction ≥ 35%
-- [ ] Kaggle 2000-batch smoke test → colour_shift > 0.05
-- [ ] Full run ONNX visibly stylises 3 real photos
-- [ ] `python -m pytest tests/ -k "not takes_long"` all pass
+- [x] Signature check: `style_weight=1e10` in `StyleTrainer.train` ✅ (P1-3)
+- [x] Kaggle 2000-batch smoke test → mean_diff=57.0 ✅ (P3-1, threshold 20)
+- [ ] ⏳ Full run ONNX visibly stylises 3 real photos (P3-4 — awaiting Kaggle output)
+- [ ] ⏳ `python -m pytest tests/ -k "not takes_long"` all pass (run after P3-4)
 
 ---
 
@@ -180,30 +179,23 @@ runner.analyse_style()
 - [x] **P5-8** Moved `docs/style_analysis.ipynb` → `scripts/style_analysis.ipynb`. Imports `analyse_style` / `recommend_weights` from `src.trainer.style_analyser` (no inline duplicates).
 - [x] **P5-9** Add unit tests: `tests/trainer/test_style_analyser.py` — 16 tests covering all branches of `analyse_style` + `recommend_weights` + `KaggleStyleRunner.analyse_style()` + `TrainingConfig` round-trip. All pass.
 
-### Open questions for review
+### Decisions taken
 
-1. **Location of helper**: `scripts/` (runs on Kaggle too) vs `src/kaggle/` (installable) — recommend `scripts/` since Kaggle clones the repo anyway.
-2. **Shared analyser**: duplicate `_analyse_style` logic exists in both notebooks. Should it move to `src/trainer/style_analyser.py` so both notebooks import it? Recommend yes.
-3. **Config persistence**: should `TrainingConfig` be saved as `config.json` next to the output model so resume is automatic? Recommend yes.
+| Decision | Outcome |
+|---|---|
+| Helper location | `scripts/kaggle_training_helper.py` ✅ |
+| Shared analyser | `src/trainer/style_analyser.py` — imported by both notebooks ✅ |
+| Config persistence | `TrainingConfig.save()/load()` writes `config.json` next to `model.pth`; resume is automatic ✅ |
 
 ---
 
-## Recommended phase sequence
+## Next actions
 
-```
-P1-4  →  P2  →  P3 (Kaggle validation)  →  P5 (refactor)  →  P4 (close out)
-```
-
-**Rationale:**
-
-| Step | Why before P5 / not after |
-|---|---|
-| P1-4 first | Tiny fix (1 line in Kaggle notebook). Gets the notebook correct before any validation. |
-| P2 first | Fixes `style_analysis.ipynb` signal test so local pre-checks are trustworthy. |
-| P3 before P5 | Validates the bug fixes on real Kaggle GPU. Refactoring on *proven* working code is much safer. If P3 fails after P5 it is harder to tell whether the refactor introduced a regression. |
-| P5 before P4 | Refactor produces the clean codebase worth tagging. P4 (git tag, model regeneration) is the final ceremony on polished code. |
-
-**Do not do P5 before P3.** A structural refactor moves ~130 lines into a new class. If the Kaggle smoke test fails after that it becomes ambiguous whether the training fix or the refactor broke it.
+1. **Download Kaggle output** — once training finishes, download the zip from the Output tab.
+2. **P3-4** — run the ONNX on 3 real photos, confirm style is visible.
+3. **P4-2** — `python scripts/setup_models.py` for each new style.
+4. **P4-3/P4-4** — remove `style-trainer-issues` tag, add `fix-complete` git tag.
+5. **Run full test suite** — `python -m pytest tests/ -k "not takes_long"`.
 
 ---
 
