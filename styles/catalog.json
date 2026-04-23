@@ -45,14 +45,5 @@
       "preview_path": "styles/starry_night/preview.jpg",
       "is_builtin": true
     },
-    {
-      "id": "mucha",
-      "name": "Mucha",
-      "description": "Art Nouveau",
-      "author": "PeterWazinski",
-      "model_path": "styles/mucha/model.onnx",
-      "preview_path": "styles/mucha/preview.jpg",
-      "is_builtin": false
-    }
   ]
 }
