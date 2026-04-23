@@ -1,6 +1,6 @@
 # Fix Style Trainer — Implementation Roadmap
 
-**Status:** Phase 1 complete — Phase 2 complete — Phase 3 (Kaggle validation) next  
+**Status:** Phase 1 complete — Phase 2 complete — Phase 3 in progress — Phase 5 complete (P5-3–P5-7 deferred: kaggle nb kept as reference)  
 **Created:** 2026-04-22  
 **Problem:** Newly trained styles show no visible effect on photos. Analysis notebook gives false-positive verdicts for good style images.
 
@@ -39,8 +39,8 @@
 
 ## Phase 3 — Validate before full 6-hour Kaggle run  *(manual)*
 
-- [ ] **P3-1** Run 2000-batch Kaggle smoke test: SW=1e10, CW=1e5, size=256, batch=4 on `candy.jpg`. Expected: colour_shift > 0.05.
-- [ ] **P3-2** Colour shift confirmed → launch full training (2 epochs ≈ 166k images).
+- [x] **P3-1** Run 2000-batch Kaggle smoke test: SW=1e10, CW=1e5, size=256, batch=4 on `candy.jpg`. **mean_diff=57.0** — ✓ GOOD (threshold 20). Colour shift confirmed.
+- [x] **P3-2** Colour shift confirmed → launched full training (2 epochs ≈ 166k images). *(training running on Kaggle)*
 - [ ] **P3-3** Still < 0.05 → switch content layer to `relu2_2` (P1-2) and re-test.
 - [ ] **P3-4** Apply trained ONNX to 3 real photos — verify style visible to naked eye.
 
@@ -170,15 +170,15 @@ runner.analyse_style()
 
 ### Files to create/modify
 
-- [ ] **P5-1** Create `src/trainer/style_analyser.py` — `analyse_style(path) -> dict` and `recommend_weights(metrics) -> tuple[float, float, str]`. Extract from both notebooks.
-- [ ] **P5-2** Create `scripts/kaggle_training_helper.py` — `TrainingConfig` dataclass (with `save()`/`load()` JSON methods) + `KaggleStyleRunner` class + argparse `main()` CLI
-- [ ] **P5-3** Refactor `docs/kaggle_style_training.ipynb` Cell 4 — remove `_analyse_style` / `_recommend`, replace with `runner.analyse_style()`
-- [ ] **P5-4** Collapse Cell 5 (smoke test) to `runner.run_smoke_test()` call
-- [ ] **P5-5** Collapse Cell 6 (full train) to `runner.run_full_training()` call (saves `config.json`)
-- [ ] **P5-6** Collapse Cell 7 (preview + package) to `runner.package_output()` call
-- [ ] **P5-7** Collapse Cell 8 (resume) to `runner.resume_training()` call (reads `config.json` automatically)
-- [ ] **P5-8** Update `docs/style_analysis.ipynb` to import `analyse_style` / `recommend_weights` from `src.trainer.style_analyser` instead of defining them inline
-- [ ] **P5-9** Add unit tests for `style_analyser.py` functions and `KaggleStyleRunner.analyse_style()` (mock `StyleTrainer` for smoke-test test)
+- [x] **P5-1** Create `src/trainer/style_analyser.py` — `analyse_style(path) -> dict` and `recommend_weights(metrics) -> tuple[float, float, str]`. Extracted from both notebooks.
+- [x] **P5-2** Create `scripts/kaggle_training_helper.py` — `TrainingConfig` dataclass (with `save()`/`load()` JSON methods) + `KaggleStyleRunner` class + argparse `main()` CLI.
+- [ ] **P5-3** Refactor `docs/kaggle_style_training.ipynb` Cell 4 — remove `_analyse_style` / `_recommend`, replace with `runner.analyse_style()` *(deferred — notebook kept as reference)*
+- [ ] **P5-4** Collapse Cell 5 (smoke test) to `runner.run_smoke_test()` call *(deferred)*
+- [ ] **P5-5** Collapse Cell 6 (full train) to `runner.run_full_training()` call (saves `config.json`) *(deferred)*
+- [ ] **P5-6** Collapse Cell 7 (preview + package) to `runner.package_output()` call *(deferred)*
+- [ ] **P5-7** Collapse Cell 8 (resume) to `runner.resume_training()` call (reads `config.json` automatically) *(deferred)*
+- [x] **P5-8** Update `docs/style_analysis.ipynb` to import `analyse_style` / `recommend_weights` from `src.trainer.style_analyser` instead of defining them inline. Also removed 3 duplicate `SIGNAL_TEST_SW` lines.
+- [x] **P5-9** Add unit tests: `tests/trainer/test_style_analyser.py` — 16 tests covering all branches of `analyse_style` + `recommend_weights` + `KaggleStyleRunner.analyse_style()` + `TrainingConfig` round-trip. All pass.
 
 ### Open questions for review
 

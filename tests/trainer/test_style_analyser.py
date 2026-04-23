@@ -1,0 +1,210 @@
+"""Unit tests for src/trainer/style_analyser.py and KaggleStyleRunner.analyse_style()."""
+from __future__ import annotations
+
+import pathlib
+import tempfile
+from unittest.mock import patch
+
+import numpy as np
+import pytest
+from PIL import Image
+
+from src.trainer.style_analyser import analyse_style, recommend_weights
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def synthetic_style_image(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Save a 64×64 random RGB image to disk and return its path."""
+    arr = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
+    path = tmp_path / "style.jpg"
+    Image.fromarray(arr).save(str(path))
+    return path
+
+
+@pytest.fixture()
+def flat_style_image(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Completely flat (single-colour) 64×64 image — exercises the ⚠ Weak branch."""
+    arr = np.full((64, 64, 3), 128, dtype=np.uint8)
+    path = tmp_path / "flat_style.jpg"
+    Image.fromarray(arr).save(str(path))
+    return path
+
+
+@pytest.fixture()
+def high_texture_style_image(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Checkerboard-like image with strong local variance — exercises ✓ Excellent branch."""
+    arr = np.zeros((64, 64, 3), dtype=np.uint8)
+    for i in range(64):
+        for j in range(64):
+            arr[i, j] = 255 if (i // 4 + j // 4) % 2 == 0 else 0
+    path = tmp_path / "high_texture_style.jpg"
+    Image.fromarray(arr).save(str(path))
+    return path
+
+
+# ---------------------------------------------------------------------------
+# analyse_style — return-value contract
+# ---------------------------------------------------------------------------
+
+EXPECTED_KEYS = {
+    "name", "flat_pct", "mean_patch_std", "edge_density",
+    "color_std", "local_var", "white", "black",
+    "pure_r", "pure_g", "pure_b", "pure_y",
+}
+
+
+def test_analyse_style_returns_all_keys(synthetic_style_image: pathlib.Path) -> None:
+    m = analyse_style(synthetic_style_image)
+    assert set(m.keys()) == EXPECTED_KEYS
+
+
+def test_analyse_style_name_matches_filename(synthetic_style_image: pathlib.Path) -> None:
+    m = analyse_style(synthetic_style_image)
+    assert m["name"] == synthetic_style_image.name
+
+
+def test_analyse_style_values_are_floats(synthetic_style_image: pathlib.Path) -> None:
+    m = analyse_style(synthetic_style_image)
+    for key in EXPECTED_KEYS - {"name"}:
+        assert isinstance(m[key], float), f"{key} should be float, got {type(m[key])}"
+
+
+def test_analyse_style_flat_pct_range(synthetic_style_image: pathlib.Path) -> None:
+    m = analyse_style(synthetic_style_image)
+    assert 0.0 <= m["flat_pct"] <= 100.0
+
+
+def test_analyse_style_flat_image_has_high_flat_pct(flat_style_image: pathlib.Path) -> None:
+    """A uniform-colour image should have near-100% flat_pct."""
+    m = analyse_style(flat_style_image)
+    assert m["flat_pct"] > 90.0, f"Expected flat_pct > 90, got {m['flat_pct']:.1f}"
+
+
+def test_analyse_style_local_var_nonnegative(synthetic_style_image: pathlib.Path) -> None:
+    m = analyse_style(synthetic_style_image)
+    assert m["local_var"] >= 0.0
+
+
+def test_analyse_style_edge_density_nonnegative(synthetic_style_image: pathlib.Path) -> None:
+    m = analyse_style(synthetic_style_image)
+    assert m["edge_density"] >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# recommend_weights — decision-rule coverage
+# ---------------------------------------------------------------------------
+
+def test_recommend_returns_three_tuple(synthetic_style_image: pathlib.Path) -> None:
+    m = analyse_style(synthetic_style_image)
+    result = recommend_weights(m)
+    assert len(result) == 3
+
+
+def test_recommend_excellent_branch() -> None:
+    """local_var ≥ 900, flat_pct < 20 → Excellent."""
+    m: dict = {"local_var": 950.0, "flat_pct": 10.0}
+    sw, cw, verdict = recommend_weights(m)
+    assert verdict == "✓ Excellent"
+    assert sw == 1e8
+    assert cw == 1e5
+
+
+def test_recommend_good_branch() -> None:
+    """local_var ≥ 700, flat_pct not < 20 → Good."""
+    m: dict = {"local_var": 750.0, "flat_pct": 25.0}
+    sw, cw, verdict = recommend_weights(m)
+    assert verdict == "✓ Good"
+    assert sw == 3e8
+    assert cw == 1e5
+
+
+def test_recommend_weak_ceiling_high_flat_pct() -> None:
+    """flat_pct ≥ 55 → Weak/ceiling with sw=1e9."""
+    m: dict = {"local_var": 300.0, "flat_pct": 60.0}
+    sw, cw, verdict = recommend_weights(m)
+    assert verdict == "⚠ Weak / ceiling"
+    assert sw == 1e9
+
+
+def test_recommend_weak_ceiling_moderate_flat_pct() -> None:
+    """40 ≤ flat_pct < 55 → Weak/ceiling with sw=5e8."""
+    m: dict = {"local_var": 300.0, "flat_pct": 45.0}
+    sw, cw, verdict = recommend_weights(m)
+    assert verdict == "⚠ Weak / ceiling"
+    assert sw == 5e8
+
+
+def test_recommend_moderate_branch() -> None:
+    """Falls through all other conditions → Moderate."""
+    m: dict = {"local_var": 400.0, "flat_pct": 15.0}
+    sw, cw, verdict = recommend_weights(m)
+    assert verdict == "~ Moderate"
+    assert sw == 5e8
+    assert cw == 5e4
+
+
+def test_recommend_verdicts_are_known_strings(synthetic_style_image: pathlib.Path) -> None:
+    m = analyse_style(synthetic_style_image)
+    _, _, verdict = recommend_weights(m)
+    assert verdict in {"✓ Excellent", "✓ Good", "~ Moderate", "⚠ Weak / ceiling"}
+
+
+# ---------------------------------------------------------------------------
+# KaggleStyleRunner.analyse_style() — integration with analyse_style module
+# ---------------------------------------------------------------------------
+
+def test_runner_analyse_style_calls_module(synthetic_style_image: pathlib.Path) -> None:
+    """KaggleStyleRunner.analyse_style() should delegate to src.trainer.style_analyser."""
+    from scripts.kaggle_training_helper import KaggleStyleRunner, TrainingConfig
+
+    cfg = TrainingConfig(
+        style_image=synthetic_style_image,
+        style_id="test",
+        style_name="Test",
+        coco_path=pathlib.Path("."),
+    )
+    runner = KaggleStyleRunner(cfg)
+
+    with patch("scripts.kaggle_training_helper.analyse_style", wraps=analyse_style) as mock_fn:
+        result = runner.analyse_style()
+
+    mock_fn.assert_called_once_with(synthetic_style_image)
+    assert set(result.keys()) == EXPECTED_KEYS
+
+
+# ---------------------------------------------------------------------------
+# TrainingConfig.save() / load() round-trip
+# ---------------------------------------------------------------------------
+
+def test_training_config_save_load_roundtrip(
+    synthetic_style_image: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
+    from scripts.kaggle_training_helper import TrainingConfig
+
+    cfg = TrainingConfig(
+        style_image=synthetic_style_image,
+        style_id="roundtrip",
+        style_name="Round Trip",
+        coco_path=tmp_path,
+        style_weight=1e10,
+        content_weight=5e4,
+        epochs=2,
+        batch_size=4,
+        image_size=256,
+        smoke_batches=200,
+        device="cpu",
+    )
+    cfg.save(tmp_path)
+    loaded = TrainingConfig.load(tmp_path)
+
+    assert loaded.style_id == cfg.style_id
+    assert loaded.style_name == cfg.style_name
+    assert loaded.style_weight == cfg.style_weight
+    assert loaded.content_weight == cfg.content_weight
+    assert loaded.epochs == cfg.epochs
+    assert loaded.device == cfg.device
+    assert loaded.style_image == cfg.style_image
