@@ -1,6 +1,6 @@
 # Fix Style Trainer — Implementation Roadmap
 
-**Status:** Phase 1 complete — Phase 2 complete — Phase 3 in progress — Phase 5 complete (P5-3–P5-7 deferred: kaggle nb kept as reference)  
+**Status:** Phase 1 complete — Phase 2 complete — Phase 3 in progress — Phase 5 complete  
 **Created:** 2026-04-22  
 **Problem:** Newly trained styles show no visible effect on photos. Analysis notebook gives false-positive verdicts for good style images.
 
@@ -172,12 +172,12 @@ runner.analyse_style()
 
 - [x] **P5-1** Create `src/trainer/style_analyser.py` — `analyse_style(path) -> dict` and `recommend_weights(metrics) -> tuple[float, float, str]`. Extracted from both notebooks.
 - [x] **P5-2** Create `scripts/kaggle_training_helper.py` — `TrainingConfig` dataclass (with `save()`/`load()` JSON methods) + `KaggleStyleRunner` class + argparse `main()` CLI.
-- [ ] **P5-3** Refactor `docs/kaggle_style_training.ipynb` Cell 4 — remove `_analyse_style` / `_recommend`, replace with `runner.analyse_style()` *(deferred — notebook kept as reference)*
-- [ ] **P5-4** Collapse Cell 5 (smoke test) to `runner.run_smoke_test()` call *(deferred)*
-- [ ] **P5-5** Collapse Cell 6 (full train) to `runner.run_full_training()` call (saves `config.json`) *(deferred)*
-- [ ] **P5-6** Collapse Cell 7 (preview + package) to `runner.package_output()` call *(deferred)*
-- [ ] **P5-7** Collapse Cell 8 (resume) to `runner.resume_training()` call (reads `config.json` automatically) *(deferred)*
-- [x] **P5-8** Update `docs/style_analysis.ipynb` to import `analyse_style` / `recommend_weights` from `src.trainer.style_analyser` instead of defining them inline. Also removed 3 duplicate `SIGNAL_TEST_SW` lines.
+- [x] **P5-3** Created `scripts/kaggle_style_training.ipynb` (cockpit) — Cell 8: `_analyse_style`/`_recommend` replaced with `runner.analyse_style()`. Reference copy kept as `docs/kaggle_style_training.OLD.ipynb`.
+- [x] **P5-4** Cockpit Cell 10 — smoke test collapsed to `runner.run_smoke_test()`.
+- [x] **P5-5** Cockpit Cell 12 — full training collapsed to `runner.run_full_training()` (saves `config.json`).
+- [x] **P5-6** Cockpit Cell 14 — preview+package collapsed to `runner.package_output()`.
+- [x] **P5-7** Cockpit Cell 16 — resume collapsed to `runner.resume_training()` (loads `config.json` automatically).
+- [x] **P5-8** Moved `docs/style_analysis.ipynb` → `scripts/style_analysis.ipynb`. Imports `analyse_style` / `recommend_weights` from `src.trainer.style_analyser` (no inline duplicates).
 - [x] **P5-9** Add unit tests: `tests/trainer/test_style_analyser.py` — 16 tests covering all branches of `analyse_style` + `recommend_weights` + `KaggleStyleRunner.analyse_style()` + `TrainingConfig` round-trip. All pass.
 
 ### Open questions for review
