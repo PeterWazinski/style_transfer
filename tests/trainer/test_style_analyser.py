@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from src.trainer.style_analyser import analyse_style, recommend_weights
+from src.trainer.style_analyser import analyse_style, hist_overlap, recommend_weights, snap_sw
 
 
 # ---------------------------------------------------------------------------
@@ -208,3 +208,56 @@ def test_training_config_save_load_roundtrip(
     assert loaded.epochs == cfg.epochs
     assert loaded.device == cfg.device
     assert loaded.style_image == cfg.style_image
+
+
+# ---------------------------------------------------------------------------
+# snap_sw — rounding behaviour
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("raw,expected", [
+    (1.1e8,  1e8),   # 1.1 ≤ 1×1.42 → snaps to 1
+    (1.9e8,  2e8),   # 1.9 ≤ 2×1.42 → snaps to 2
+    (2.8e8,  2e8),   # 2.8 ≤ 2×1.42=2.84 → snaps to 2
+    (4.2e8,  3e8),   # 4.2 ≤ 3×1.42=4.26 → snaps to 3
+    (6.5e8,  5e8),   # 6.5 ≤ 5×1.42=7.10 → snaps to 5
+    (9.5e8,  7e8),   # 9.5 ≤ 7×1.42=9.94 → snaps to 7
+    (1.0,    1.0),   # minimum / edge-case
+])
+def test_snap_sw_rounds_correctly(raw: float, expected: float) -> None:
+    assert snap_sw(raw) == pytest.approx(expected)
+
+
+def test_snap_sw_zero_guarded() -> None:
+    """snap_sw(0) must not raise (max(0,1)=1 guard)."""
+    result = snap_sw(0.0)
+    assert result >= 1.0
+
+
+# ---------------------------------------------------------------------------
+# hist_overlap — contract tests
+# ---------------------------------------------------------------------------
+
+def test_hist_overlap_identical_images_returns_one() -> None:
+    arr = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8).astype(np.float32)
+    assert hist_overlap(arr, arr) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_hist_overlap_range_zero_to_one() -> None:
+    a = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8).astype(np.float32)
+    b = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8).astype(np.float32)
+    score = hist_overlap(a, b)
+    assert 0.0 <= score <= 1.0
+
+
+def test_hist_overlap_different_palettes_lower_than_identical() -> None:
+    """All-red vs all-blue should score lower than all-red vs all-red."""
+    red  = np.zeros((64, 64, 3), dtype=np.float32); red[..., 0]  = 200.0
+    blue = np.zeros((64, 64, 3), dtype=np.float32); blue[..., 2] = 200.0
+    assert hist_overlap(red, blue) < hist_overlap(red, red)
+
+
+def test_hist_overlap_symmetric() -> None:
+    a = np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8).astype(np.float32)
+    b = np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8).astype(np.float32)
+    assert hist_overlap(a, b) == pytest.approx(hist_overlap(b, a), abs=1e-6)
+

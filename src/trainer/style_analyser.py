@@ -1,13 +1,16 @@
 """Style image analysis utilities.
 
-Shared by ``docs/style_analysis.ipynb`` and ``scripts/kaggle_training_helper.py``.
-Provides two public functions:
+Shared by ``scripts/style_analysis.ipynb`` and ``scripts/kaggle_training_helper.py``.
+Provides four public functions:
 
 * :func:`analyse_style` — compute texture/geometry metrics for one style image.
 * :func:`recommend_weights` — map metrics to ``(style_weight, content_weight, verdict)``.
+* :func:`snap_sw` — round a raw style-weight to the nearest human-friendly value.
+* :func:`hist_overlap` — per-channel histogram overlap between two image arrays.
 """
 from __future__ import annotations
 
+import math
 import pathlib
 
 import numpy as np
@@ -109,3 +112,46 @@ def recommend_weights(m: dict) -> tuple[float, float, str]:
         sw = 1e9 if fp >= 55 else 5e8
         return sw, 5e4, "⚠ Weak / ceiling"
     return 5e8, 5e4, "~ Moderate"
+
+
+def snap_sw(raw: float) -> float:
+    """Round a raw style-weight to the nearest human-friendly value.
+
+    Snaps to the nearest value in the set {1, 2, 3, 5, 7} × 10^n so that
+    suggested weights are easy to read and remember.
+
+    Args:
+        raw: Any positive float.
+
+    Returns:
+        Nearest snapped value, e.g. ``snap_sw(2.8e8)`` → ``3e8``.
+    """
+    exp = math.floor(math.log10(max(raw, 1.0)))
+    m = raw / 10 ** exp
+    for snap in (1.0, 2.0, 3.0, 5.0, 7.0, 10.0):
+        if m <= snap * 1.42:
+            return snap * 10 ** exp
+    return 10 ** (exp + 1)
+
+
+def hist_overlap(a: np.ndarray, b: np.ndarray, bins: int = 32) -> float:
+    """Compute per-channel histogram overlap between two image arrays.
+
+    Both arrays must be float32 with pixel values in ``[0, 255]`` and shape
+    ``(..., 3)`` (last axis = RGB channels).
+
+    Args:
+        a: First image array.
+        b: Second image array.
+        bins: Number of histogram bins (default 32).
+
+    Returns:
+        Overlap score in ``[0, 1]``.  ``1.0`` means identical colour distributions.
+    """
+    bin_w = 256.0 / bins
+    total = 0.0
+    for c in range(3):
+        ha, _ = np.histogram(a[..., c], bins=bins, range=(0.0, 256.0), density=True)
+        hb, _ = np.histogram(b[..., c], bins=bins, range=(0.0, 256.0), density=True)
+        total += float(np.minimum(ha, hb).sum() * bin_w)
+    return total / 3.0

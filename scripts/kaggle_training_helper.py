@@ -39,7 +39,7 @@ _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from src.trainer.style_analyser import analyse_style, recommend_weights  # noqa: E402
+from src.trainer.style_analyser import analyse_style, hist_overlap, recommend_weights  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -232,8 +232,8 @@ class KaggleStyleRunner:
             )
             orig_arr = arr[0].transpose(1, 2, 0)
             colour_shift = float(
-                _hist_overlap(out_img.astype(np.float32), style_ref)
-                - _hist_overlap(orig_arr, style_ref)
+                hist_overlap(out_img.astype(np.float32), style_ref)
+                - hist_overlap(orig_arr, style_ref)
             )
 
         print(f"  Mean pixel change : {mean_diff:.1f}")
@@ -399,17 +399,6 @@ class KaggleStyleRunner:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-def _hist_overlap(a: np.ndarray, b: np.ndarray, bins: int = 32) -> float:
-    """Per-channel histogram overlap in [0, 1]."""
-    bin_w = 256.0 / bins
-    total = 0.0
-    for c in range(3):
-        ha, _ = np.histogram(a[..., c], bins=bins, range=(0.0, 256.0), density=True)
-        hb, _ = np.histogram(b[..., c], bins=bins, range=(0.0, 256.0), density=True)
-        total += float(np.minimum(ha, hb).sum() * bin_w)
-    return total / 3.0
-
 
 # ---------------------------------------------------------------------------
 # CLI
