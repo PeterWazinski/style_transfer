@@ -44,6 +44,6 @@
       "model_path": "styles/starry_night/model.onnx",
       "preview_path": "styles/starry_night/preview.jpg",
       "is_builtin": true
-    },
+    }
   ]
 }
