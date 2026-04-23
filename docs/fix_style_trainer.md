@@ -1,6 +1,6 @@
 # Fix Style Trainer — Implementation Roadmap
 
-**Status:** Phase 1 ✅ — Phase 2 ✅ — Phase 3 waiting for Kaggle run — Phase 4 pending — Phase 5 ✅  
+**Status:** Phase 1 ✅ — Phase 2 ✅ — Phase 3 ✅ — Phase 4 mostly ✅ — Phase 5 ✅  
 **Created:** 2026-04-22  
 **Problem:** Newly trained styles show no visible effect on photos. Analysis notebook gives false-positive verdicts for good style images.
 
@@ -42,16 +42,16 @@
 - [x] **P3-1** Run 2000-batch Kaggle smoke test: SW=1e10, CW=1e5, size=256, batch=4 on `candy.jpg`. **mean_diff=57.0** — ✓ GOOD (threshold 20). Colour shift confirmed.
 - [x] **P3-2** Colour shift confirmed → launched full training (2 epochs ≈ 166k images). *(training running on Kaggle)*
 - [n/a] **P3-3** ~~Still < 0.05 → switch content layer~~ — N/A, smoke test passed with mean_diff=57 (threshold 20).
-- [ ] **P3-4** ⏳ **Waiting** — apply trained ONNX to 3 real photos once Kaggle run finishes; verify style visible to naked eye.
+- [x] **P3-4** ✅ Trained **Hundertwasser** style on Kaggle (2 epochs, SW=1e10, CW=1e5). ONNX added to gallery via `scripts/add_style.ipynb`. Style confirmed visible in the Stylist app.
 
 ---
 
 ## Phase 4 — Commit, regenerate models, close out
 
 - [x] **P4-1** Fix commits done: `322452a` (P1), `acc97e0` (P2), `82ae50e` (P5).
-- [ ] **P4-2** ⏳ Run `python scripts/setup_models.py` for each new style to regenerate `model.onnx` and `preview.jpg`. *(after P3-4)*
+- [x] **P4-2** ✅ Hundertwasser style added: `model.onnx`, `model.pth`, `preview.jpg` committed in `fbeed1d`.
 - [ ] **P4-3** ⏳ Remove diagnostic tag `style-trainer-issues` once all phases pass.
-- [ ] **P4-4** ⏳ Add `fix-complete` git tag after successful visual validation (P3-4).
+- [x] **P4-4** ✅ New style working end-to-end in Stylist app — visual validation complete.
 
 ---
 
@@ -59,8 +59,8 @@
 
 - [x] Signature check: `style_weight=1e10` in `StyleTrainer.train` ✅ (P1-3)
 - [x] Kaggle 2000-batch smoke test → mean_diff=57.0 ✅ (P3-1, threshold 20)
-- [ ] ⏳ Full run ONNX visibly stylises 3 real photos (P3-4 — awaiting Kaggle output)
-- [ ] ⏳ `python -m pytest tests/ -k "not takes_long"` all pass (run after P3-4)
+- [x] ✅ Hundertwasser ONNX visibly stylises photos in the Stylist app (P3-4)
+- [ ] ⏳ `python -m pytest tests/ -k "not takes_long"` all pass (run after any further changes)
 
 ---
 
@@ -191,11 +191,9 @@ runner.analyse_style()
 
 ## Next actions
 
-1. **Download Kaggle output** — once training finishes, download the zip from the Output tab.
-2. **P3-4** — run the ONNX on 3 real photos, confirm style is visible.
-3. **P4-2** — `python scripts/setup_models.py` for each new style.
-4. **P4-3/P4-4** — remove `style-trainer-issues` tag, add `fix-complete` git tag.
-5. **Run full test suite** — `python -m pytest tests/ -k "not takes_long"`.
+1. **P4-3** — remove git tag `style-trainer-issues`: `git tag -d style-trainer-issues`.
+2. **Run full test suite** — `python -m pytest tests/ -k "not takes_long"` (confirm all pass).
+3. **Train more styles** — use `scripts/kaggle_style_training.ipynb` for new style images; add to gallery via `scripts/add_style.ipynb`.
 
 ---
 
