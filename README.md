@@ -51,11 +51,14 @@ Requires PyInstaller in the venv (`pip install pyinstaller`). torch/torchvision 
 
 Training requires a GPU. The easiest free option is Kaggle (30 h/week GPU T4):
 
-1. Open `docs/kaggle_style_training.ipynb` in a Kaggle notebook
+1. Open `scripts/kaggle_style_training.ipynb` in a Kaggle notebook
 2. Add the `awsaf49/coco-2017-dataset` input dataset and enable GPU T4
-3. Run all cells — training takes ~3 h for 2 epochs
+3. Run all cells — training takes ~3 h for 2 epochs (~166 k images)
 4. Download `model.onnx` + `preview.jpg` from the Output tab
-5. Place them in `styles/<your_id>/` and add an entry to `styles/catalog.json`
+5. Run `scripts/add_style.ipynb` locally to register the new style in the gallery
+
+> **Analyse before training:** open `scripts/style_analysis.ipynb` to score your style image
+> and run a local CPU smoke test before committing to the full Kaggle run.
 
 ---
 
@@ -67,7 +70,8 @@ src/
   trainer/   Training pipeline (torch, dev only)
   core/      Shared ONNX inference, registry, settings
 styles/      Pretrained ONNX models + catalog.json
-docs/        Architecture notes, Kaggle training notebook
+scripts/     Training notebooks, analysis tools, helper scripts (see scripts/index.md)
+docs/        Architecture notes, roadmap
 main_image_styler.py    → launch the app
 main_style_trainer.py   → train a new style (CLI)
 compile.ps1             → build the portable exe
