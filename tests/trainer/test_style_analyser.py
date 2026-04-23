@@ -195,7 +195,7 @@ def test_training_config_save_load_roundtrip(
         epochs=2,
         batch_size=4,
         image_size=256,
-        smoke_batches=200,
+        smoke_batches=2000,
         device="cpu",
     )
     cfg.save(tmp_path)

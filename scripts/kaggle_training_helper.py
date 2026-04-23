@@ -59,7 +59,7 @@ class TrainingConfig:
     epochs: int = 2
     batch_size: int = 4
     image_size: int = 256
-    smoke_batches: int = 200
+    smoke_batches: int = 2000  # validated on T4 (P3-1: mean_diff=57 on candy)
     device: str = "cuda"
 
     # populated by run_full_training(); used by resume_training()
@@ -450,7 +450,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ss = sub.add_parser("smoke", help="Run a quick smoke test (N batches)")
     _add_style_args(ss)
     _add_weight_args(ss)
-    ss.add_argument("--smoke-batches", type=int, default=200)
+    ss.add_argument("--smoke-batches", type=int, default=2000)
 
     # train
     st = sub.add_parser("train", help="Full training run (2 epochs by default)")
