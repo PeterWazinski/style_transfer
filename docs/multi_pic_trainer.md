@@ -15,20 +15,24 @@ instead of a single image, for a more robust and motif-free style transfer.
 - [ ] **P1-1** `src/trainer/vgg_loss.py`  
   Add `compute_mean_style_grams(style_images: list[Tensor]) -> list[Tensor]`  
   Loops over N style images, accumulates Gram sums, divides by N.  
-  `forward()` and `compute_style_grams()` stay unchanged (backward compatible).
+  `forward()` and `compute_style_grams()` stay unchanged (backward compatible).  
+  Add optional TV loss helper `total_variation_loss(x: Tensor) -> Tensor`.
 
 - [ ] **P1-2** `src/trainer/style_trainer.py`  
   Change single-image Gram precomputation (line ~129):  
   `style_tensor = load_style_tensor(style_images[0], ...)` + `compute_style_grams()`  
   → `compute_mean_style_grams([load_style_tensor(p, ...) for p in style_images])`  
-  Works for N=1 (identical to current behaviour) and N>1.
+  Works for N=1 (identical to current behaviour) and N>1.  
+  Add `tv_weight: float = 0.0` param to `train()`; when >0 add `tv_weight * total_variation_loss(output)` to batch loss.
 
 - [ ] **P1-3** `scripts/kaggle_training_helper.py`  
   - `TrainingConfig.style_image: Path` → `style_images: list[Path]`  
-  - Add `style_images_dir: Path | None = None` — if set, auto-expands `*.jpg/*.png` to list  
-  - Update `analyse_style()`, `run_smoke_test()`, `run_full_training()`, `resume_training()`  
-  - Smoke test: build mean Gram from all N images (not just first)
-  - `run_smoke_test()` return dict: add `"n_style_images": int`
+  - Add `style_images_dir: Path | None = None` — if set, auto-expands `*.jpg/*.jpeg/*.png` in that dir to list  
+  - Add `tv_weight: float = 1e-6` to `TrainingConfig` (D1)  
+  - Update `analyse_style()` to iterate over all images and print per-image metric table (D4)  
+  - Update `run_smoke_test()` to build mean Gram from all N images (D2)  
+  - `run_smoke_test()` return dict: add `"n_style_images": int`  
+  - `run_full_training()` and `resume_training()`: pass `tv_weight` through to trainer
 
 - [ ] **P1-4** Unit tests: `tests/trainer/test_multi_pic_gram.py`  
   - `test_mean_grams_single_image_matches_compute_style_grams` — N=1 must produce same result  
@@ -48,16 +52,18 @@ instead of a single image, for a more robust and motif-free style transfer.
 - [ ] **P2-4** Step 2: Clone + install (copy, unchanged)
 
 - [ ] **P2-5** Step 3: Configure style images directory  
-  - Set `STYLE_IMAGES_DIR` path (uploaded Kaggle dataset or `/kaggle/working/`)  
-  - Auto-glob `*.jpg`, `*.jpeg`, `*.png`  
-  - Print list of found images + count  
-  - Assert ≥ 2 images found
+  - Set `STYLE_IMAGES_DIR = pathlib.Path("/kaggle/working/<your_dir>")` (D3)  
+  - Auto-glob `*.jpg`, `*.jpeg`, `*.png`; sort for reproducibility  
+  - Print numbered list of found images + total count  
+  - Warn if N=1 (use `kaggle_trainer` instead); assert N ≥ 1  
+  - Show TV loss toggle: `TV_WEIGHT = 1e-6  # set to 0.0 to disable` (D1)
 
-- [ ] **P2-6** Step 3a: Style analysis grid  
-  - Run `analyse_style()` on each image  
-  - Print table: filename | flat% | patch_std | edge | verdict  
-  - Warn if any image looks like a bad candidate (very flat or very different from others)  
-  - Show thumbnail grid using `IPython.display`
+- [ ] **P2-6** Step 3a: Style analysis — per-image quality check (D4)  
+  - Run `analyse_style()` on every image in `STYLE_IMAGES_DIR`  
+  - Print table: `#` | filename | flat% | patch_std | edge_density | local_var | SW_rec | verdict  
+  - Flag rows: ⚠ if verdict is "flat" or if flat% > 2× mean flat% of set  
+  - Show thumbnail strip (max 10 images wide) via `IPython.display`  
+  - Print curator guidance: "Remove flagged images before proceeding"
 
 - [ ] **P2-7** Step 3b: Smoke test (~10 min on T4)  
   - Uses mean Gram from all N images  
@@ -90,7 +96,7 @@ instead of a single image, for a more robust and motif-free style transfer.
 ### Phase 4 — Integration & Polish
 
 - [ ] **P4-1** `scripts/add_style.ipynb`  
-  No changes needed — it accepts any model.onnx/model.pth regardless of how it was trained.
+  **No changes needed** — multi-pic trainer packages `model.onnx` + `model.pth` + `preview.jpg` in the same structure; `add_style.ipynb` registers it without modification (D5).
 
 - [ ] **P4-2** `scripts/index.md`  
   Add row for `kaggle_multi_pic_trainer.ipynb`.
@@ -107,12 +113,13 @@ instead of a single image, for a more robust and motif-free style transfer.
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | TV loss (γ≈1e-6 per guide)? | Add as optional param `tv_weight: float = 0.0` — off by default to not change existing behaviour |
-| D2 | Smoke test uses N images or just first? | All N — otherwise smoke test does not validate the actual training objective |
-| D3 | Kaggle dataset vs working dir upload? | Support both — `style_images_dir` accepts any path |
-| D4 | `add_style.ipynb` changes? | None — accepts any trained model |
-| D5 | Min N images enforced? | Warn if N=1 (use `kaggle_trainer` instead), but do not hard-fail |
-| D6 | Backward compat for N=1? | Yes — `compute_mean_style_grams([single])` ≡ current behaviour |
+| D1 | TV loss (γ≈1e-6 per guide)? | `tv_weight: float = 1e-6` — **on by default**; can be set to `0.0` to disable. Exposed as a `TrainingConfig` field and notebook toggle. |
+| D2 | Smoke test uses N images or just first? | **All N** — smoke test must use the actual mean Gram to validate the real training objective |
+| D3 | Style images location on Kaggle? | **Always `/kaggle/working/<dir>/`** — user uploads images there; `STYLE_IMAGES_DIR` points to that path |
+| D4 | Style analyser per image or summary only? | **Per image** — print metric row per image so user can judge if any image is a bad pick before training |
+| D5 | `add_style.ipynb` integration? | **Unchanged** — multi-pic trainer packages `model.onnx` + `model.pth` + `preview.jpg` identically; `add_style.ipynb` registers it without modification |
+| D6 | Min N images enforced? | Warn if N=1 (suggest `kaggle_trainer` instead), but do not hard-fail |
+| D7 | Backward compat for N=1? | Yes — `compute_mean_style_grams([single])` ≡ current behaviour |
 
 ---
 
