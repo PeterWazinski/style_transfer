@@ -53,6 +53,15 @@
       "model_path": "styles/hundertwasser/model.onnx",
       "preview_path": "styles/hundertwasser/preview.jpg",
       "is_builtin": false
+    },
+    {
+      "id": "mucha",
+      "name": "Mucha",
+      "description": "Dancer by Mucha",
+      "author": "PeterWazinski",
+      "model_path": "styles/mucha/model.onnx",
+      "preview_path": "styles/mucha/preview.jpg",
+      "is_builtin": false
     }
   ]
 }
