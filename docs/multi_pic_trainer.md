@@ -43,38 +43,38 @@ instead of a single image, for a more robust and motif-free style transfer.
 
 ### Phase 2 — New Kaggle notebook `scripts/kaggle_multi_pic_trainer.ipynb`
 
-- [ ] **P2-1** Header markdown: title, instructions, structure overview
+- [x] **P2-1** Header markdown: title, instructions, structure overview
 
-- [ ] **P2-2** Step 1: GPU + COCO check (copy from `kaggle_trainer`, unchanged)
+- [x] **P2-2** Step 1: GPU + COCO check (copy from `kaggle_trainer`, unchanged)
 
-- [ ] **P2-3** Step 1b: Internet access check (copy, unchanged)
+- [x] **P2-3** Step 1b: Internet access check (copy, unchanged)
 
-- [ ] **P2-4** Step 2: Clone + install (copy, unchanged)
+- [x] **P2-4** Step 2: Clone + install (copy, unchanged)
 
-- [ ] **P2-5** Step 3: Configure style images directory  
+- [x] **P2-5** Step 3: Configure style images directory  
   - Set `STYLE_IMAGES_DIR = pathlib.Path("/kaggle/working/<your_dir>")` (D3)  
   - Auto-glob `*.jpg`, `*.jpeg`, `*.png`; sort for reproducibility  
   - Print numbered list of found images + total count  
   - Warn if N=1 (use `kaggle_trainer` instead); assert N ≥ 1  
   - Show TV loss toggle: `TV_WEIGHT = 1e-6  # set to 0.0 to disable` (D1)
 
-- [ ] **P2-6** Step 3a: Style analysis — per-image quality check (D4)  
+- [x] **P2-6** Step 3a: Style analysis — per-image quality check (D4)  
   - Run `analyse_style()` on every image in `STYLE_IMAGES_DIR`  
   - Print table: `#` | filename | flat% | patch_std | edge_density | local_var | SW_rec | verdict  
   - Flag rows: ⚠ if verdict is "flat" or if flat% > 2× mean flat% of set  
   - Show thumbnail strip (max 10 images wide) via `IPython.display`  
   - Print curator guidance: "Remove flagged images before proceeding"
 
-- [ ] **P2-7** Step 3b: Smoke test (~10 min on T4)  
+- [x] **P2-7** Step 3b: Smoke test (~10 min on T4)  
   - Uses mean Gram from all N images  
   - Shows 3-way comparison: content | styled | style ref (first image)  
   - Same verdict table as `kaggle_trainer`
 
-- [ ] **P2-8** Step 4: Full training (calls `runner.run_full_training()`, unchanged)
+- [x] **P2-8** Step 4: Full training (calls `runner.run_full_training()`, unchanged)
 
-- [ ] **P2-9** Step 5: Preview + download (copy from `kaggle_trainer`, unchanged)
+- [x] **P2-9** Step 5: Preview + download (copy from `kaggle_trainer`, unchanged)
 
-- [ ] **P2-10** Step 6: Resume from checkpoint (copy, unchanged)
+- [x] **P2-10** Step 6: Resume from checkpoint (copy, unchanged)
 
 ---
 
