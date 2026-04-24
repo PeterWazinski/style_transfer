@@ -80,13 +80,13 @@ instead of a single image, for a more robust and motif-free style transfer.
 
 ### Phase 3 — Style analyser enhancements
 
-- [ ] **P3-1** `src/trainer/style_analyser.py`  
+- [x] **P3-1** `src/trainer/style_analyser.py`  
   Add `analyse_style_set(paths: list[Path]) -> dict` that:  
   - Calls `analyse_style()` on each image  
   - Returns per-image metrics + aggregate stats (mean, std per metric)  
   - Warns if any image is an outlier (e.g. flat_pct > 2× mean)
 
-- [ ] **P3-2** Add `hist_overlap_matrix(paths) -> np.ndarray`  
+- [x] **P3-2** Add `hist_overlap_matrix(paths) -> np.ndarray`  
   N×N pairwise colour-histogram similarity.  
   High similarity → consistent artist palette.  
   Low average similarity → warning "images may be too diverse".
@@ -95,13 +95,13 @@ instead of a single image, for a more robust and motif-free style transfer.
 
 ### Phase 4 — Integration & Polish
 
-- [ ] **P4-1** `scripts/add_style.ipynb`  
+- [x] **P4-1** `scripts/add_style.ipynb`  
   **No changes needed** — multi-pic trainer packages `model.onnx` + `model.pth` + `preview.jpg` in the same structure; `add_style.ipynb` registers it without modification (D5).
 
-- [ ] **P4-2** `scripts/index.md`  
+- [x] **P4-2** `scripts/index.md`  
   Add row for `kaggle_multi_pic_trainer.ipynb`.
 
-- [ ] **P4-3** Run full test suite — all existing tests must still pass (P1-2 is backward compatible).
+- [x] **P4-3** Run full test suite — all existing tests must still pass (P1-2 is backward compatible).
 
 - [ ] **P4-4** Test on Kaggle with 5 Hundertwasser images — compare smoke test result vs single-image baseline.
 

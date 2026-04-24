@@ -1,9 +1,11 @@
 """Style image analysis utilities.
 
 Shared by ``scripts/style_analysis.ipynb`` and ``scripts/kaggle_training_helper.py``.
-Provides four public functions:
+Provides six public functions:
 
 * :func:`analyse_style` — compute texture/geometry metrics for one style image.
+* :func:`analyse_style_set` — analyse N images; returns per-image metrics + aggregates + outliers.
+* :func:`hist_overlap_matrix` — N×N pairwise colour-histogram similarity matrix.
 * :func:`recommend_weights` — map metrics to ``(style_weight, content_weight, verdict)``.
 * :func:`snap_sw` — round a raw style-weight to the nearest human-friendly value.
 * :func:`hist_overlap` — per-channel histogram overlap between two image arrays.
@@ -132,6 +134,106 @@ def snap_sw(raw: float) -> float:
         if m <= snap * 1.42:
             return snap * 10 ** exp
     return 10 ** (exp + 1)
+
+
+def analyse_style_set(paths: list[pathlib.Path]) -> dict:
+    """Analyse a set of style images and return per-image metrics + aggregate stats.
+
+    Args:
+        paths: List of paths to style images.
+
+    Returns:
+        A dict with keys:
+
+        * ``"images"``   – list of per-image metric dicts (one per path)
+        * ``"means"``    – dict of mean value per numeric metric key
+        * ``"stds"``     – dict of std dev per numeric metric key
+        * ``"outliers"`` – list of ``{"path": Path, "reason": str}`` for
+          images whose ``flat_pct`` exceeds 2× the set mean flat_pct.
+        * ``"warnings"`` – list of human-readable warning strings
+    """
+    if not paths:
+        raise ValueError("paths must not be empty")
+
+    metrics_keys = (
+        "flat_pct", "mean_patch_std", "edge_density",
+        "color_std", "local_var",
+    )
+    images = [analyse_style(p) for p in paths]
+
+    means: dict[str, float] = {}
+    stds: dict[str, float] = {}
+    for k in metrics_keys:
+        vals = np.array([m[k] for m in images], dtype=float)
+        means[k] = float(vals.mean())
+        stds[k] = float(vals.std())
+
+    outliers: list[dict] = []
+    mean_flat = means["flat_pct"]
+    for img_m, path in zip(images, paths):
+        if img_m["flat_pct"] > max(2.0 * mean_flat, 60.0):
+            outliers.append({"path": path, "reason": f"flat_pct={img_m['flat_pct']:.1f} > 2× mean"})
+
+    warnings: list[str] = []
+    if len(paths) == 1:
+        warnings.append("Only 1 style image — multi-image training has no benefit over kaggle_trainer.")
+    if outliers:
+        for o in outliers:
+            warnings.append(f"⚠ {o['path'].name}: {o['reason']} — consider removing.")
+
+    return {
+        "images":   images,
+        "means":    means,
+        "stds":     stds,
+        "outliers": outliers,
+        "warnings": warnings,
+    }
+
+
+def hist_overlap_matrix(paths: list[pathlib.Path], bins: int = 32) -> np.ndarray:
+    """Compute an N×N pairwise colour-histogram similarity matrix.
+
+    Entry [i, j] is the ``hist_overlap`` score between images i and j.
+    The diagonal is always 1.0.
+
+    Args:
+        paths: List of paths to style images (N ≥ 1).
+        bins:  Number of histogram bins per channel (default 32).
+
+    Returns:
+        Float32 ndarray of shape (N, N) with values in [0, 1].
+        Prints a warning if the mean off-diagonal similarity < 0.4
+        (images may be too stylistically diverse for a coherent mean model).
+    """
+    if not paths:
+        raise ValueError("paths must not be empty")
+
+    n = len(paths)
+    arrays: list[np.ndarray] = []
+    for p in paths:
+        arr = np.array(Image.open(p).convert("RGB").resize((64, 64)), dtype=np.float32)
+        arrays.append(arr)
+
+    mat = np.eye(n, dtype=np.float32)
+    for i in range(n):
+        for j in range(i + 1, n):
+            score = hist_overlap(arrays[i], arrays[j], bins=bins)
+            mat[i, j] = score
+            mat[j, i] = score
+
+    if n > 1:
+        off_diag = mat[~np.eye(n, dtype=bool)]
+        mean_sim = float(off_diag.mean())
+        if mean_sim < 0.4:
+            import warnings as _w
+            _w.warn(
+                f"Style images may be too diverse (mean pairwise colour similarity = {mean_sim:.2f} < 0.4). "
+                "Consider using images from the same artist / colour palette.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    return mat
 
 
 def hist_overlap(a: np.ndarray, b: np.ndarray, bins: int = 32) -> float:

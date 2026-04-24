@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from src.trainer.style_analyser import analyse_style, hist_overlap, recommend_weights, snap_sw
+from src.trainer.style_analyser import analyse_style, analyse_style_set, hist_overlap, hist_overlap_matrix, recommend_weights, snap_sw
 
 
 # ---------------------------------------------------------------------------
@@ -262,4 +262,136 @@ def test_hist_overlap_symmetric() -> None:
     a = np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8).astype(np.float32)
     b = np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8).astype(np.float32)
     assert hist_overlap(a, b) == pytest.approx(hist_overlap(b, a), abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# analyse_style_set
+# ---------------------------------------------------------------------------
+
+def test_analyse_style_set_single_image(synthetic_style_image: pathlib.Path) -> None:
+    result = analyse_style_set([synthetic_style_image])
+    assert len(result["images"]) == 1
+    assert set(result["means"].keys()) == {"flat_pct", "mean_patch_std", "edge_density", "color_std", "local_var"}
+    assert set(result["stds"].keys())  == {"flat_pct", "mean_patch_std", "edge_density", "color_std", "local_var"}
+    assert "warnings" in result
+    assert any("1 style image" in w for w in result["warnings"]), "Expected N=1 warning"
+
+
+def test_analyse_style_set_multi_image(
+    synthetic_style_image: pathlib.Path,
+    flat_style_image: pathlib.Path,
+    high_texture_style_image: pathlib.Path,
+) -> None:
+    paths = [synthetic_style_image, flat_style_image, high_texture_style_image]
+    result = analyse_style_set(paths)
+    assert len(result["images"]) == 3
+    for k in ("flat_pct", "mean_patch_std", "edge_density", "color_std", "local_var"):
+        assert isinstance(result["means"][k], float)
+        assert isinstance(result["stds"][k], float)
+
+
+def test_analyse_style_set_means_match_manual(
+    synthetic_style_image: pathlib.Path,
+    flat_style_image: pathlib.Path,
+) -> None:
+    paths = [synthetic_style_image, flat_style_image]
+    result = analyse_style_set(paths)
+    m0 = analyse_style(paths[0])
+    m1 = analyse_style(paths[1])
+    expected_mean_flat = (m0["flat_pct"] + m1["flat_pct"]) / 2.0
+    assert result["means"]["flat_pct"] == pytest.approx(expected_mean_flat, abs=1e-6)
+
+
+def test_analyse_style_set_flat_image_flagged_as_outlier(
+    flat_style_image: pathlib.Path,
+    high_texture_style_image: pathlib.Path,
+) -> None:
+    """A flat image alongside a high-texture image should be an outlier."""
+    # The flat image has very high flat_pct; high_texture has low flat_pct.
+    # flat_pct of flat > 2× mean only if the flat image is extreme enough.
+    # Use 3 high-texture + 1 flat to make the mean clearly low.
+    paths = [high_texture_style_image, high_texture_style_image, flat_style_image]
+    result = analyse_style_set(paths)
+    outlier_paths = [o["path"] for o in result["outliers"]]
+    assert flat_style_image in outlier_paths, (
+        f"Flat image was not flagged as outlier. "
+        f"flat_pcts={[m['flat_pct'] for m in result['images']]}"
+    )
+
+
+def test_analyse_style_set_empty_raises() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        analyse_style_set([])
+
+
+def test_analyse_style_set_no_false_outliers(
+    synthetic_style_image: pathlib.Path,
+    high_texture_style_image: pathlib.Path,
+) -> None:
+    """Two similar-texture images should not flag either as an outlier."""
+    result = analyse_style_set([synthetic_style_image, high_texture_style_image])
+    # Neither random nor checkerboard should flag as flat outlier given both have
+    # varied texture — allow at most 0 outliers here.
+    assert len(result["outliers"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# hist_overlap_matrix
+# ---------------------------------------------------------------------------
+
+def test_hist_overlap_matrix_diagonal_is_one(synthetic_style_image: pathlib.Path) -> None:
+    mat = hist_overlap_matrix([synthetic_style_image, synthetic_style_image])
+    assert mat[0, 0] == pytest.approx(1.0, abs=1e-5)
+    assert mat[1, 1] == pytest.approx(1.0, abs=1e-5)
+
+
+def test_hist_overlap_matrix_shape(
+    synthetic_style_image: pathlib.Path,
+    flat_style_image: pathlib.Path,
+    high_texture_style_image: pathlib.Path,
+) -> None:
+    paths = [synthetic_style_image, flat_style_image, high_texture_style_image]
+    mat = hist_overlap_matrix(paths)
+    assert mat.shape == (3, 3)
+
+
+def test_hist_overlap_matrix_symmetric(
+    synthetic_style_image: pathlib.Path,
+    flat_style_image: pathlib.Path,
+) -> None:
+    mat = hist_overlap_matrix([synthetic_style_image, flat_style_image])
+    assert mat[0, 1] == pytest.approx(mat[1, 0], abs=1e-6)
+
+
+def test_hist_overlap_matrix_values_in_range(
+    synthetic_style_image: pathlib.Path,
+    flat_style_image: pathlib.Path,
+) -> None:
+    mat = hist_overlap_matrix([synthetic_style_image, flat_style_image])
+    assert float(mat.min()) >= 0.0
+    assert float(mat.max()) <= 1.0 + 1e-6
+
+
+def test_hist_overlap_matrix_single_image(synthetic_style_image: pathlib.Path) -> None:
+    mat = hist_overlap_matrix([synthetic_style_image])
+    assert mat.shape == (1, 1)
+    assert mat[0, 0] == pytest.approx(1.0, abs=1e-5)
+
+
+def test_hist_overlap_matrix_empty_raises() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        hist_overlap_matrix([])
+
+
+def test_hist_overlap_matrix_diverse_warns(
+    synthetic_style_image: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A red and a blue image pair should trigger a UserWarning about diversity."""
+    red_arr  = np.zeros((64, 64, 3), dtype=np.uint8); red_arr[..., 0]  = 220
+    blue_arr = np.zeros((64, 64, 3), dtype=np.uint8); blue_arr[..., 2] = 220
+    red_path  = tmp_path / "red.jpg";  Image.fromarray(red_arr).save(str(red_path))
+    blue_path = tmp_path / "blue.jpg"; Image.fromarray(blue_arr).save(str(blue_path))
+    with pytest.warns(UserWarning, match="diverse"):
+        hist_overlap_matrix([red_path, blue_path])
 
