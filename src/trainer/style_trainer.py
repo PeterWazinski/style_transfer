@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 
 from src.trainer.train_utils import CocoImageDataset, load_style_tensor
 from src.trainer.transformer_net import TransformerNet
-from src.trainer.vgg_loss import VGGPerceptualLoss
+from src.trainer.vgg_loss import VGGPerceptualLoss, total_variation_loss
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -80,6 +80,7 @@ class StyleTrainer:
         checkpoint_path: Path | None = None,
         progress_callback: Callable[[int, int, float], None] | None = None,
         max_batches: int | None = None,
+        tv_weight: float = 0.0,
     ) -> Path:
         """Train TransformerNet and save the final PyTorch checkpoint.
 
@@ -102,6 +103,8 @@ class StyleTrainer:
             checkpoint_interval:   Save a checkpoint every N images processed.
             checkpoint_path:       Resume from this .pth checkpoint if given.
             progress_callback:     Called as callback(images_done, total, loss).
+            tv_weight:             Weight for Total Variation loss (0.0 = disabled).
+                                   Recommended value when enabled: 1e-6.
 
         Returns:
             Path to the saved .pth model.
@@ -125,9 +128,16 @@ class StyleTrainer:
         loss_fn = VGGPerceptualLoss().to(device)
         loss_fn.eval()
 
-        # --- Precompute style Grams ---
-        style_tensor = load_style_tensor(style_images[0], size=style_size).to(device)
-        style_grams = loss_fn.compute_style_grams(style_tensor)
+        # --- Precompute style Grams (mean across all supplied style images) ---
+        style_tensors = [
+            load_style_tensor(p, size=style_size).to(device) for p in style_images
+        ]
+        style_grams = loss_fn.compute_mean_style_grams(style_tensors)
+        logger.info(
+            "Style Gram matrices computed from %d image(s): %s",
+            len(style_images),
+            [p.name for p in style_images],
+        )
 
         # --- Dataset ---
         if not coco_dataset_path.exists():
@@ -157,6 +167,8 @@ class StyleTrainer:
                 output = net(content)
                 c_loss, s_loss = loss_fn(output, content, style_grams)
                 loss: torch.Tensor = content_weight * c_loss + style_weight * s_loss
+                if tv_weight > 0.0:
+                    loss = loss + tv_weight * total_variation_loss(output)
 
                 optimizer.zero_grad()
                 loss.backward()

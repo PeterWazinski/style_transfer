@@ -162,7 +162,7 @@ def test_runner_analyse_style_calls_module(synthetic_style_image: pathlib.Path) 
     from scripts.kaggle_training_helper import KaggleStyleRunner, TrainingConfig
 
     cfg = TrainingConfig(
-        style_image=synthetic_style_image,
+        style_images=[synthetic_style_image],
         style_id="test",
         style_name="Test",
         coco_path=pathlib.Path("."),
@@ -173,7 +173,9 @@ def test_runner_analyse_style_calls_module(synthetic_style_image: pathlib.Path) 
         result = runner.analyse_style()
 
     mock_fn.assert_called_once_with(synthetic_style_image)
-    assert set(result.keys()) == EXPECTED_KEYS
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert set(result[0]["metrics"].keys()) == EXPECTED_KEYS
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +188,7 @@ def test_training_config_save_load_roundtrip(
     from scripts.kaggle_training_helper import TrainingConfig
 
     cfg = TrainingConfig(
-        style_image=synthetic_style_image,
+        style_images=[synthetic_style_image],
         style_id="roundtrip",
         style_name="Round Trip",
         coco_path=tmp_path,
@@ -207,7 +209,7 @@ def test_training_config_save_load_roundtrip(
     assert loaded.content_weight == cfg.content_weight
     assert loaded.epochs == cfg.epochs
     assert loaded.device == cfg.device
-    assert loaded.style_image == cfg.style_image
+    assert loaded.style_images == cfg.style_images
 
 
 # ---------------------------------------------------------------------------

@@ -12,20 +12,20 @@ instead of a single image, for a more robust and motif-free style transfer.
 
 ### Phase 1 — Core library changes (no UI yet)
 
-- [ ] **P1-1** `src/trainer/vgg_loss.py`  
+- [x] **P1-1** `src/trainer/vgg_loss.py`  
   Add `compute_mean_style_grams(style_images: list[Tensor]) -> list[Tensor]`  
   Loops over N style images, accumulates Gram sums, divides by N.  
   `forward()` and `compute_style_grams()` stay unchanged (backward compatible).  
   Add optional TV loss helper `total_variation_loss(x: Tensor) -> Tensor`.
 
-- [ ] **P1-2** `src/trainer/style_trainer.py`  
+- [x] **P1-2** `src/trainer/style_trainer.py`  
   Change single-image Gram precomputation (line ~129):  
   `style_tensor = load_style_tensor(style_images[0], ...)` + `compute_style_grams()`  
   → `compute_mean_style_grams([load_style_tensor(p, ...) for p in style_images])`  
   Works for N=1 (identical to current behaviour) and N>1.  
   Add `tv_weight: float = 0.0` param to `train()`; when >0 add `tv_weight * total_variation_loss(output)` to batch loss.
 
-- [ ] **P1-3** `scripts/kaggle_training_helper.py`  
+- [x] **P1-3** `scripts/kaggle_training_helper.py`  
   - `TrainingConfig.style_image: Path` → `style_images: list[Path]`  
   - Add `style_images_dir: Path | None = None` — if set, auto-expands `*.jpg/*.jpeg/*.png` in that dir to list  
   - Add `tv_weight: float = 1e-6` to `TrainingConfig` (D1)  
@@ -34,7 +34,7 @@ instead of a single image, for a more robust and motif-free style transfer.
   - `run_smoke_test()` return dict: add `"n_style_images": int`  
   - `run_full_training()` and `resume_training()`: pass `tv_weight` through to trainer
 
-- [ ] **P1-4** Unit tests: `tests/trainer/test_multi_pic_gram.py`  
+- [x] **P1-4** Unit tests: `tests/trainer/test_multi_pic_gram.py`  
   - `test_mean_grams_single_image_matches_compute_style_grams` — N=1 must produce same result  
   - `test_mean_grams_averages_correctly` — 2 known images → known average  
   - `test_style_trainer_accepts_multiple_images` — smoke train 1 batch, N=3

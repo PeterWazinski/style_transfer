@@ -50,31 +50,48 @@ from src.trainer.style_analyser import analyse_style, hist_overlap, recommend_we
 class TrainingConfig:
     """All hyperparameters for one style-transfer training job."""
 
-    style_image: pathlib.Path
+    style_images: list[pathlib.Path]
     style_id: str
     style_name: str
     coco_path: pathlib.Path
     style_weight: float = 1e10
     content_weight: float = 1e5
+    tv_weight: float = 1e-6       # Total Variation loss weight; set 0.0 to disable
     epochs: int = 2
     batch_size: int = 4
     image_size: int = 256
     smoke_batches: int = 2000  # validated on T4 (P3-1: mean_diff=57 on candy)
     device: str = "cuda"
 
+    # If set, auto-expands *.jpg/jpeg/png in this dir to style_images on post_init
+    style_images_dir: pathlib.Path | None = None
+
     # populated by run_full_training(); used by resume_training()
     output_dir: pathlib.Path = field(default_factory=lambda: pathlib.Path("."))
 
     _CONFIG_FILE: str = field(default="config.json", init=False, repr=False, compare=False)
 
+    def __post_init__(self) -> None:
+        """Expand style_images_dir to style_images list if provided."""
+        if self.style_images_dir is not None and self.style_images_dir.is_dir():
+            exts = {".jpg", ".jpeg", ".png"}
+            found = sorted(
+                p for p in self.style_images_dir.iterdir()
+                if p.suffix.lower() in exts
+            )
+            if found:
+                self.style_images = found
+
     def save(self, out_dir: pathlib.Path) -> None:
         """Serialise config to ``<out_dir>/config.json``."""
         out_dir.mkdir(parents=True, exist_ok=True)
         d = asdict(self)
-        # Convert Path objects to strings for JSON
+        # Convert Path objects and lists of Paths to strings for JSON
         for k, v in d.items():
             if isinstance(v, pathlib.Path):
                 d[k] = str(v)
+            elif isinstance(v, list):
+                d[k] = [str(item) if isinstance(item, pathlib.Path) else item for item in v]
         (out_dir / "config.json").write_text(
             json.dumps(d, indent=2), encoding="utf-8"
         )
@@ -88,10 +105,18 @@ class TrainingConfig:
         d = json.loads(cfg_path.read_text(encoding="utf-8"))
         # Remove internal fields not accepted by __init__
         d.pop("_CONFIG_FILE", None)
-        path_fields = {"style_image", "coco_path", "output_dir"}
+        path_fields = {"coco_path", "output_dir", "style_images_dir"}
         for k in path_fields:
-            if k in d:
+            if k in d and d[k] is not None:
                 d[k] = pathlib.Path(d[k])
+        # style_images is a list of paths
+        if "style_images" in d:
+            d["style_images"] = [pathlib.Path(p) for p in d["style_images"]]
+        # Back-compat: old configs may have style_image (singular)
+        if "style_image" in d and "style_images" not in d:
+            d["style_images"] = [pathlib.Path(d.pop("style_image"))]
+        else:
+            d.pop("style_image", None)
         return cls(**d)
 
 
@@ -144,24 +169,36 @@ class KaggleStyleRunner:
 
     # ── Step 1: style analysis ────────────────────────────────────────────────
 
-    def analyse_style(self) -> dict:
-        """Analyse the style image and print recommended weights."""
-        m = analyse_style(self.cfg.style_image)
-        sw_rec, cw_rec, verdict = recommend_weights(m)
-
+    def analyse_style(self) -> list[dict]:
+        """Analyse all style images and print per-image metric table."""
         print("─── Style image analysis ───")
-        print(f"  File    : {self.cfg.style_image.name}")
-        print(
-            f"  flat%={m['flat_pct']:.1f}  p_std={m['mean_patch_std']:.1f}  "
-            f"edge={m['edge_density']:.1f}  l_var={m['local_var']:.1f}"
-        )
-        print(f"  Verdict : {verdict}")
+        n = len(self.cfg.style_images)
+        if n == 1:
+            print("  ⚠  Only 1 style image — consider using kaggle_trainer for single-image training.")
+        print(f"  Images     : {n}")
         print()
-        print(f"  Recommended  →  STYLE_WEIGHT = {sw_rec:.0e}   CONTENT_WEIGHT = {cw_rec:.0e}")
-        print(f"  Using fixed  →  STYLE_WEIGHT = {self.cfg.style_weight:.0e}  "
-              f"CONTENT_WEIGHT = {self.cfg.content_weight:.0e}")
-        print("  (STYLE_WEIGHT is always 1e10 — overrides texture-analysis recommendation)")
-        return m
+        header = f"  {'#':>3}  {'File':<30}  {'flat%':>6}  {'p_std':>6}  {'edge':>6}  {'l_var':>6}  {'SW_rec':>8}  Verdict"
+        print(header)
+        print("  " + "─" * (len(header) - 2))
+
+        results = []
+        for i, img_path in enumerate(self.cfg.style_images, 1):
+            m = analyse_style(img_path)
+            sw_rec, cw_rec, verdict = recommend_weights(m)
+            flag = "⚠" if "flat" in verdict.lower() or m["flat_pct"] > 60 else " "
+            print(
+                f"  {i:>3}  {img_path.name:<30}  "
+                f"{m['flat_pct']:>6.1f}  {m['mean_patch_std']:>6.1f}  "
+                f"{m['edge_density']:>6.1f}  {m['local_var']:>6.1f}  "
+                f"{sw_rec:>8.0e}  {flag} {verdict}"
+            )
+            results.append({"path": img_path, "metrics": m, "sw_rec": sw_rec, "verdict": verdict})
+
+        print()
+        print(f"  Using fixed  →  STYLE_WEIGHT = {self.cfg.style_weight:.0e}   "
+              f"CONTENT_WEIGHT = {self.cfg.content_weight:.0e}   "
+              f"TV_WEIGHT = {self.cfg.tv_weight:.0e}")
+        return results
 
     # ── Step 2: smoke test ────────────────────────────────────────────────────
 
@@ -192,7 +229,7 @@ class KaggleStyleRunner:
 
             trainer = StyleTrainer(device=self.cfg.device)
             trainer.train(
-                style_images=[self.cfg.style_image],
+                style_images=self.cfg.style_images,
                 coco_dataset_path=self.cfg.coco_path,
                 output_model_path=pth,
                 epochs=999,
@@ -200,6 +237,7 @@ class KaggleStyleRunner:
                 image_size=self.cfg.image_size,
                 style_weight=self.cfg.style_weight,
                 content_weight=self.cfg.content_weight,
+                tv_weight=self.cfg.tv_weight,
                 checkpoint_interval=0,
                 max_batches=n,
                 progress_callback=_cb,
@@ -227,7 +265,7 @@ class KaggleStyleRunner:
             mean_diff = float(np.abs(arr[0].transpose(1, 2, 0) - out_img).mean())
 
             style_ref = np.array(
-                Image.open(self.cfg.style_image).convert("RGB").resize((256, 256)),
+                Image.open(self.cfg.style_images[0]).convert("RGB").resize((256, 256)),
                 dtype=np.float32,
             )
             orig_arr = arr[0].transpose(1, 2, 0)
@@ -243,6 +281,7 @@ class KaggleStyleRunner:
 
         print(f"  Mean pixel change : {mean_diff:.1f}")
         print(f"  Colour shift      : {colour_shift:+.3f}")
+        print(f"  Style images used : {len(self.cfg.style_images)}")
         if mean_diff < 8 and colour_shift < 0.02:
             verdict = "⚠ WEAK"
             print(f"  {verdict} — style barely visible.")
@@ -255,12 +294,13 @@ class KaggleStyleRunner:
             print(f"  {verdict} — style clearly visible after {n} batches.")
             print("     ➜  Safe to proceed to full training.")
         return {
-            "mean_diff":     mean_diff,
-            "colour_shift":  colour_shift,
-            "verdict":       verdict,
-            "content_img":   content_pil,    # PIL Image 256×256 — content photo used for scoring
-            "styled_img":    styled_pil,     # PIL Image 256×256 — styled output
-            "style_ref_img": style_ref_pil,  # PIL Image 256×256 — style reference (resized)
+            "mean_diff":       mean_diff,
+            "colour_shift":    colour_shift,
+            "verdict":         verdict,
+            "n_style_images":  len(self.cfg.style_images),
+            "content_img":     content_pil,    # PIL Image 256×256 — content photo used for scoring
+            "styled_img":      styled_pil,     # PIL Image 256×256 — styled output
+            "style_ref_img":   style_ref_pil,  # PIL Image 256×256 — style reference (first image, resized)
         }
 
     # ── Step 3: full training ─────────────────────────────────────────────────
@@ -278,7 +318,7 @@ class KaggleStyleRunner:
 
         cmd = [
             sys.executable, str(self._repo_dir / "main_style_trainer.py"), "train",
-            "--style",          str(self.cfg.style_image),
+            "--style",          *[str(p) for p in self.cfg.style_images],
             "--coco",           str(self.cfg.coco_path),
             "--out",            str(out_dir),
             "--id",             self.cfg.style_id,
@@ -286,6 +326,7 @@ class KaggleStyleRunner:
             "--content",        str(content_image),
             "--style-weight",   str(int(self.cfg.style_weight)),
             "--content-weight", str(int(self.cfg.content_weight)),
+            "--tv-weight",      str(self.cfg.tv_weight),
             "--device",         self.cfg.device,
             "--epochs",         str(self.cfg.epochs),
             "--batch-size",     str(self.cfg.batch_size),
@@ -352,7 +393,7 @@ class KaggleStyleRunner:
 
         trainer = StyleTrainer(device=self.cfg.device)
         trainer.train(
-            style_images=[self.cfg.style_image],
+            style_images=self.cfg.style_images,
             coco_dataset_path=self.cfg.coco_path,
             output_model_path=out_dir / "model.pth",
             epochs=self.cfg.epochs,
@@ -360,6 +401,7 @@ class KaggleStyleRunner:
             image_size=self.cfg.image_size,
             style_weight=self.cfg.style_weight,
             content_weight=self.cfg.content_weight,
+            tv_weight=self.cfg.tv_weight,
             checkpoint_path=latest,
             progress_callback=_progress,
         )
@@ -423,7 +465,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── shared style/coco args ────────────────────────────────────────────────
     def _add_style_args(sp: argparse.ArgumentParser) -> None:
-        sp.add_argument("--style",  type=pathlib.Path, required=True, help="Path to style image")
+        sp.add_argument(
+            "--style", type=pathlib.Path, required=True, nargs="+",
+            help="Path(s) to style image(s) — supply multiple for mean-Gram training"
+        )
         sp.add_argument("--id",     required=True,                    help="Style slug (folder name)")
         sp.add_argument("--name",   default="",                       help="Display name")
         sp.add_argument("--coco",   type=pathlib.Path,
@@ -436,6 +481,8 @@ def _build_parser() -> argparse.ArgumentParser:
     def _add_weight_args(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--style-weight",   type=float, default=1e10)
         sp.add_argument("--content-weight", type=float, default=1e5)
+        sp.add_argument("--tv-weight",      type=float, default=1e-6,
+                        help="Total Variation loss weight (0.0 = disabled)")
 
     # verify
     sv = sub.add_parser("verify", help="Check GPU, COCO mount, and internet")
@@ -462,8 +509,8 @@ def _build_parser() -> argparse.ArgumentParser:
     # resume
     sr = sub.add_parser("resume", help="Resume training from last checkpoint")
     sr.add_argument("--id",     required=True, help="Style slug")
-    sr.add_argument("--style",  type=pathlib.Path,
-                    default=pathlib.Path("/kaggle/working/my_style.jpg"))
+    sr.add_argument("--style",  type=pathlib.Path, nargs="+",
+                    default=[pathlib.Path("/kaggle/working/my_style.jpg")])
     sr.add_argument("--coco",   type=pathlib.Path,
                     default=pathlib.Path(
                         "/kaggle/input/datasets/awsaf49/coco-2017-dataset/coco2017/train2017"
@@ -473,8 +520,8 @@ def _build_parser() -> argparse.ArgumentParser:
     # package
     spkg = sub.add_parser("package", help="Copy output to /kaggle/output/ and zip")
     spkg.add_argument("--id",    required=True, help="Style slug")
-    spkg.add_argument("--style", type=pathlib.Path,
-                      default=pathlib.Path("/kaggle/working/my_style.jpg"))
+    spkg.add_argument("--style", type=pathlib.Path, nargs="+",
+                      default=[pathlib.Path("/kaggle/working/my_style.jpg")])
     spkg.add_argument("--coco",  type=pathlib.Path,
                       default=pathlib.Path(
                           "/kaggle/input/datasets/awsaf49/coco-2017-dataset/coco2017/train2017"
@@ -488,12 +535,13 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     cfg = TrainingConfig(
-        style_image=getattr(args, "style", pathlib.Path("/kaggle/working/my_style.jpg")),
+        style_images=getattr(args, "style", [pathlib.Path("/kaggle/working/my_style.jpg")]),
         style_id=getattr(args, "id", ""),
         style_name=getattr(args, "name", getattr(args, "id", "")),
         coco_path=getattr(args, "coco", pathlib.Path(".")),
         style_weight=getattr(args, "style_weight", 1e10),
         content_weight=getattr(args, "content_weight", 1e5),
+        tv_weight=getattr(args, "tv_weight", 1e-6),
         epochs=getattr(args, "epochs", 2),
         batch_size=getattr(args, "batch_size", 4),
         image_size=getattr(args, "image_size", 256),

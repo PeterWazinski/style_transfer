@@ -40,7 +40,7 @@ def cmd_train(args: argparse.Namespace) -> int:
     """Train a new TransformerNet and export it to ONNX."""
     from src.trainer.style_trainer import StyleTrainer  # noqa: PLC0415
 
-    style_path = Path(args.style)
+    style_paths = [Path(p) for p in (args.style if isinstance(args.style, list) else [args.style])]
     coco_path = Path(args.coco)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -55,9 +55,9 @@ def cmd_train(args: argparse.Namespace) -> int:
 
     trainer = StyleTrainer(device=args.device)
 
-    logger.info("Training: style=%s  coco=%s  out=%s", style_path, coco_path, pth_path)
+    logger.info("Training: style=%s  coco=%s  out=%s", style_paths, coco_path, pth_path)
     trainer.train(
-        style_images=[style_path],
+        style_images=style_paths,
         coco_dataset_path=coco_path,
         output_model_path=pth_path,
         epochs=args.epochs,
@@ -65,6 +65,7 @@ def cmd_train(args: argparse.Namespace) -> int:
         image_size=args.image_size,
         style_weight=args.style_weight,
         content_weight=args.content_weight,
+        tv_weight=getattr(args, "tv_weight", 0.0),
         progress_callback=_progress,
         max_batches=args.max_batches,
     )
@@ -130,7 +131,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # -- train --
     p_train = sub.add_parser("train", help="Train a new style model")
-    p_train.add_argument("--style",          required=True,  help="Style reference image")
+    p_train.add_argument("--style",          required=True,  nargs="+",
+                         help="Style reference image(s) — multiple paths for mean-Gram training")
     p_train.add_argument("--coco",           required=True,  help="MS-COCO dataset root")
     p_train.add_argument("--out",            required=True,  help="Output directory (e.g. styles/my_style)")
     p_train.add_argument("--id",             default="",     help="Style ID for catalog registration")
@@ -142,6 +144,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--image-size",     type=int,   default=256, dest="image_size")
     p_train.add_argument("--style-weight",   type=float, default=1e8, dest="style_weight")
     p_train.add_argument("--content-weight", type=float, default=1e5, dest="content_weight")
+    p_train.add_argument("--tv-weight",      type=float, default=0.0, dest="tv_weight",
+                         help="Total Variation loss weight (default 0.0 = off for CLI; 1e-6 recommended)")
     p_train.add_argument("--max-batches",    type=int,   default=None, dest="max_batches",
                          help="Stop after N gradient steps (smoke-test mode; default: run fully)")
 

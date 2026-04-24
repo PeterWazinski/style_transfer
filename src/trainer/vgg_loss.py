@@ -150,3 +150,49 @@ class VGGPerceptualLoss(nn.Module):
         norm = self._normalise(style_image)
         features = self.extractor(norm)
         return [gram_matrix(f) for f in features]
+
+    @torch.no_grad()
+    def compute_mean_style_grams(
+        self, style_images: list[torch.Tensor]
+    ) -> list[torch.Tensor]:
+        """Precompute mean Gram matrices averaged over N style images.
+
+        Equivalent to ``compute_style_grams`` when N=1 (results are identical).
+
+        Args:
+            style_images: List of style image tensors, each [1, 3, H, W] in [0, 255].
+                          All images may differ in spatial size — Grams are spatial-
+                          size-independent (normalised by H*W inside gram_matrix).
+
+        Returns:
+            List of 4 mean Gram matrices (one per VGG layer), each [1, C, C].
+        """
+        if not style_images:
+            raise ValueError("style_images must not be empty")
+
+        sums: list[torch.Tensor] | None = None
+        for img in style_images:
+            grams = self.compute_style_grams(img)
+            if sums is None:
+                sums = [g.clone() for g in grams]
+            else:
+                for i, g in enumerate(grams):
+                    sums[i] = sums[i] + g
+
+        assert sums is not None
+        n = float(len(style_images))
+        return [s / n for s in sums]
+
+
+def total_variation_loss(x: torch.Tensor) -> torch.Tensor:
+    """Compute Total Variation loss to encourage spatial smoothness.
+
+    Args:
+        x: Image tensor [B, C, H, W] in any range.
+
+    Returns:
+        Scalar TV loss (mean over batch and spatial positions).
+    """
+    diff_h = (x[:, :, 1:, :] - x[:, :, :-1, :]).pow(2).mean()
+    diff_w = (x[:, :, :, 1:] - x[:, :, :, :-1]).pow(2).mean()
+    return diff_h + diff_w
