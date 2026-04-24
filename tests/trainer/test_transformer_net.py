@@ -40,22 +40,21 @@ def test_output_dtype_is_float32(net: TransformerNet) -> None:
 # Output range
 # ---------------------------------------------------------------------------
 
-def test_output_clamped_to_0_255(net: TransformerNet) -> None:
-    """All output pixels must be in [0, 255] after clamping."""
+def test_output_is_finite(net: TransformerNet) -> None:
+    """Output must be finite (no NaN/Inf). Clamping to [0,255] is done at export time."""
     x = torch.rand(1, 3, 64, 64) * 255.0
     with torch.no_grad():
         out = net(x)
-    assert float(out.min()) >= 0.0, "Output below 0"
-    assert float(out.max()) <= 255.0, "Output above 255"
+    assert torch.isfinite(out).all(), "Output contains NaN or Inf"
 
 
-def test_zero_input_gives_bounded_output(net: TransformerNet) -> None:
+def test_zero_input_gives_finite_output(net: TransformerNet) -> None:
+    """Zero input must produce a finite-valued output of the correct shape."""
     x = torch.zeros(1, 3, 64, 64)
     with torch.no_grad():
         out = net(x)
     assert out.shape == (1, 3, 64, 64)
-    assert float(out.min()) >= 0.0
-    assert float(out.max()) <= 255.0
+    assert torch.isfinite(out).all(), "Output contains NaN or Inf"
 
 
 # ---------------------------------------------------------------------------
