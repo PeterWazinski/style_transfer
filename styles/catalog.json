@@ -62,6 +62,15 @@
       "model_path": "styles/mucha/model.onnx",
       "preview_path": "styles/mucha/preview.jpg",
       "is_builtin": false
+    },
+    {
+      "id": "escher",
+      "name": "Escher",
+      "description": "some Escher pic in b/w",
+      "author": "PeterWazinski",
+      "model_path": "styles/escher/model.onnx",
+      "preview_path": "styles/escher/preview.jpg",
+      "is_builtin": false
     }
   ]
 }
