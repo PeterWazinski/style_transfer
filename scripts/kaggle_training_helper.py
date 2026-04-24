@@ -321,10 +321,8 @@ class KaggleStyleRunner:
 
         checkpoints = sorted(out_dir.glob("model.ckpt_*.pth"))
         if not checkpoints:
-            raise FileNotFoundError(
-                f"No checkpoints found in {out_dir}.\n"
-                "Run full training first (step 3)."
-            )
+            print(f"  No checkpoints found in {out_dir} — nothing to resume.")
+            return
         latest = checkpoints[-1]
         print(f"─── Resume from {latest.name} ───")
 
