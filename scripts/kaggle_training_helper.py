@@ -236,6 +236,11 @@ class KaggleStyleRunner:
                 - hist_overlap(orig_arr, style_ref)
             )
 
+            # Capture PIL images before the temp dir is cleaned up
+            content_pil   = img
+            styled_pil    = Image.fromarray(out_img)
+            style_ref_pil = Image.fromarray(style_ref.astype(np.uint8))
+
         print(f"  Mean pixel change : {mean_diff:.1f}")
         print(f"  Colour shift      : {colour_shift:+.3f}")
         if mean_diff < 8 and colour_shift < 0.02:
@@ -249,7 +254,14 @@ class KaggleStyleRunner:
             verdict = "✓ GOOD"
             print(f"  {verdict} — style clearly visible after {n} batches.")
             print("     ➜  Safe to proceed to full training.")
-        return {"mean_diff": mean_diff, "colour_shift": colour_shift, "verdict": verdict}
+        return {
+            "mean_diff":     mean_diff,
+            "colour_shift":  colour_shift,
+            "verdict":       verdict,
+            "content_img":   content_pil,    # PIL Image 256×256 — content photo used for scoring
+            "styled_img":    styled_pil,     # PIL Image 256×256 — styled output
+            "style_ref_img": style_ref_pil,  # PIL Image 256×256 — style reference (resized)
+        }
 
     # ── Step 3: full training ─────────────────────────────────────────────────
 
