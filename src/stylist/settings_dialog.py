@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.settings import (
+    MAX_MP_CHOICES,
     OVERLAP_CHOICES,
     PROVIDER_CHOICES,
     TILE_SIZE_CHOICES,
