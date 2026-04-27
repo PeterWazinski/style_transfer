@@ -1,14 +1,21 @@
 """Batch style transfer — apply every catalog style to one image.
 
-Produces a DIN-A4 landscape PDF contact sheet (2 rows × 3 columns per page).
+Two modes (exactly one must be specified):
+
+``--pdfoverview``
+    Creates a DIN-A4 landscape PDF contact sheet (2 rows x 3 columns per page).
+    The original image appears in the top-left cell; all styles follow.
+    Output: ``<stem>_thumbnails.pdf`` next to the source image.
+
+``--fullimage``
+    Saves a full-resolution styled JPEG for every style.
+    Output: ``<stem>_<style_name>.jpg`` next to the source image.
+    The original is not duplicated.
 
 Usage::
 
-    python scripts/batch_styler.py path/to/photo.jpg [--tile-size 1024]
-    python scripts/batch_styler.py path/to/photo.jpg --strength 0.9
-
-The output PDF is written next to the source image as
-``<stem>_thumbnails.pdf``.
+    python scripts/batch_styler.py --pdfoverview path/to/photo.jpg
+    python scripts/batch_styler.py --fullimage   path/to/photo.jpg --strength 0.9
 """
 from __future__ import annotations
 
@@ -118,9 +125,186 @@ def build_cell_list(
 # Main
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Shared: run inference for all styles, return list of (name, image) pairs
+# ---------------------------------------------------------------------------
+
+def _apply_all_styles(
+    source: Image.Image,
+    styles: list[dict],
+    tile_size: int,
+    overlap: int,
+    strength: float,
+    use_float16: bool,
+) -> list[tuple[str, Image.Image]]:
+    """Apply every style in *styles* to *source* and return results.
+
+    Skips styles whose model file is missing.  Prints a progress line for
+    each style.  Returns a list of ``(style_name, result_image)`` pairs.
+    """
+    engine = StyleTransferEngine()
+    results: list[tuple[str, Image.Image]] = []
+
+    for style in styles:
+        style_id: str   = style["id"]
+        style_name: str = style.get("name", style_id)
+        model_path: Path = REPO_ROOT / style["model_path"]
+
+        if not model_path.exists():
+            print(f"  Skipping '{style_name}' — model not found: {model_path}")
+            continue
+
+        print(f"Processing style '{style_name}' ...", flush=True)
+        try:
+            engine.load_model(style_id, model_path)
+            result = engine.apply(
+                source,
+                style_id,
+                strength=strength,
+                tile_size=tile_size,
+                overlap=overlap,
+                use_float16=use_float16,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"  Error applying '{style_name}': {exc}")
+            continue
+        finally:
+            engine._sessions.pop(style_id, None)  # noqa: SLF001
+
+        results.append((style_name, result))
+
+    return results
+
+
+def _style_name_to_filename(style_name: str) -> str:
+    """Convert a style display name to a safe filename stem."""
+    safe = style_name.lower()
+    for ch in " /\\:*?\"<>|":
+        safe = safe.replace(ch, "_")
+    return safe
+
+
+# ---------------------------------------------------------------------------
+# Command: --pdfoverview
+# ---------------------------------------------------------------------------
+
+def cmd_pdfoverview(
+    image_path: Path,
+    styles: list[dict],
+    tile_size: int,
+    overlap: int,
+    strength: float,
+    use_float16: bool,
+) -> None:
+    """Apply all styles and write a DIN-A4-landscape PDF contact sheet."""
+    source = Image.open(image_path).convert("RGB")
+    raw_styled = _apply_all_styles(
+        source, styles, tile_size, overlap, strength, use_float16
+    )
+
+    if not raw_styled:
+        sys.exit("No styles were applied successfully — nothing to write.")
+
+    styled_results = build_cell_list(source, raw_styled)
+    font = _load_font(int(LABEL_H * 0.60))
+
+    print()
+    n_pages = (len(styled_results) + CELLS_PER_PAGE - 1) // CELLS_PER_PAGE
+    print(f"Composing {n_pages} PDF page(s) ...", flush=True)
+
+    pages: list[Image.Image] = []
+    for i in range(0, len(styled_results), CELLS_PER_PAGE):
+        chunk = styled_results[i : i + CELLS_PER_PAGE]
+        pages.append(_make_page(chunk, font))
+
+    pdf_path = image_path.parent / (image_path.stem + "_thumbnails.pdf")
+    pages[0].save(
+        pdf_path,
+        format="PDF",
+        save_all=True,
+        append_images=pages[1:],
+        resolution=DPI,
+    )
+
+    print(
+        f"\nOK  PDF written: {pdf_path}"
+        f"  ({len(pages)} page(s), {len(raw_styled)} style(s) + original)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Command: --fullimage
+# ---------------------------------------------------------------------------
+
+def cmd_fullimage(
+    image_path: Path,
+    styles: list[dict],
+    tile_size: int,
+    overlap: int,
+    strength: float,
+    use_float16: bool,
+) -> None:
+    """Apply all styles and save a full-resolution JPEG per style."""
+    source = Image.open(image_path).convert("RGB")
+    raw_styled = _apply_all_styles(
+        source, styles, tile_size, overlap, strength, use_float16
+    )
+
+    if not raw_styled:
+        sys.exit("No styles were applied successfully — nothing to write.")
+
+    print()
+    written: list[Path] = []
+    for style_name, result in raw_styled:
+        stem = _style_name_to_filename(style_name)
+        out_path = image_path.parent / f"{image_path.stem}_{stem}.jpg"
+        result.save(out_path, format="JPEG", quality=92)
+        print(f"  Saved: {out_path}")
+        written.append(out_path)
+
+    print(f"\nOK  {len(written)} image(s) written to {image_path.parent}")
+
+
+# ---------------------------------------------------------------------------
+# Main / argument parsing
+# ---------------------------------------------------------------------------
+
+_USAGE = r"""
+Usage:
+  batch_styler.ps1 -pdfoverview <image>  [options]
+  batch_styler.ps1 -fullimage   <image>  [options]
+
+Modes (exactly one required):
+  -pdfoverview   Create a DIN-A4 landscape PDF contact sheet with all styles.
+                 Output: <image-dir>/<stem>_thumbnails.pdf
+  -fullimage     Save a full-resolution JPEG for each style.
+                 Output: <image-dir>/<stem>_<stylename>.jpg  (one per style)
+
+Options:
+  --tile-size N  Tile size for ONNX inference in pixels (default: 1024)
+  --overlap N    Tile overlap in pixels (default: 128)
+  --strength F   Style blend strength 0.0-1.0 (default: 1.0)
+  --float16      Enable float16 inference (faster on GPU/DML)
+
+Examples:
+  batch_styler.ps1 -pdfoverview photos\portrait.jpg
+  batch_styler.ps1 -fullimage   photos\portrait.jpg --strength 0.85
+"""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Apply all catalog styles to an image and write a PDF contact sheet."
+        description="Batch style transfer.",
+        add_help=True,
+    )
+    mode_group = parser.add_mutually_exclusive_group(required=False)
+    mode_group.add_argument(
+        "--pdfoverview", action="store_true",
+        help="Create a PDF contact sheet with all styles.",
+    )
+    mode_group.add_argument(
+        "--fullimage", action="store_true",
+        help="Save a full-resolution JPEG for each style.",
     )
     parser.add_argument("image", type=Path, help="Source image file (JPEG or PNG)")
     parser.add_argument(
@@ -133,13 +317,17 @@ def main() -> None:
     )
     parser.add_argument(
         "--strength", type=float, default=1.0,
-        help="Style blend strength 0.0–1.0 (default: 1.0)",
+        help="Style blend strength 0.0-1.0 (default: 1.0)",
     )
     parser.add_argument(
         "--float16", action="store_true", default=False,
         help="Use float16 inference (faster on GPU/DML)",
     )
     args = parser.parse_args()
+
+    if not args.pdfoverview and not args.fullimage:
+        print(_USAGE)
+        sys.exit(1)
 
     image_path: Path = args.image.resolve()
     if not image_path.exists():
@@ -161,71 +349,22 @@ def main() -> None:
     print(f"Tile size    : {args.tile_size} px  overlap: {args.overlap} px")
     print()
 
-    source = Image.open(image_path).convert("RGB")
-    engine = StyleTransferEngine()
-    font = _load_font(int(LABEL_H * 0.60))
-
-    # Original image is always the first cell
-    raw_styled: list[tuple[str, Image.Image]] = []
-
-    for style in styles:
-        style_id: str   = style["id"]
-        style_name: str = style.get("name", style_id)
-        model_path: Path = REPO_ROOT / style["model_path"]
-
-        if not model_path.exists():
-            print(f"  Skipping '{style_name}' — model not found: {model_path}")
-            continue
-
-        print(f"Processing style '{style_name}' …", flush=True)
-        try:
-            engine.load_model(style_id, model_path)
-            result = engine.apply(
-                source,
-                style_id,
-                strength=args.strength,
-                tile_size=args.tile_size,
-                overlap=args.overlap,
-                use_float16=args.float16,
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(f"  Error applying '{style_name}': {exc}")
-            continue
-        finally:
-            # Release the ONNX session to keep GPU/CPU memory manageable
-            engine._sessions.pop(style_id, None)  # noqa: SLF001
-
-        raw_styled.append((style_name, result))
-
-    if not raw_styled:
-        sys.exit("No styles were applied successfully — nothing to write.")
-
-    styled_results = build_cell_list(source, raw_styled)
-
-    # ── Compose PDF pages ────────────────────────────────────────────────────
-    print()
-    n_styles = len(raw_styled)  # excludes the "Original" cell
-    n_pages = (len(styled_results) + CELLS_PER_PAGE - 1) // CELLS_PER_PAGE
-    print(f"Composing {n_pages} PDF page(s) …", flush=True)
-
-    pages: list[Image.Image] = []
-    for i in range(0, len(styled_results), CELLS_PER_PAGE):
-        chunk = styled_results[i : i + CELLS_PER_PAGE]
-        pages.append(_make_page(chunk, font))
-
-    pdf_path = image_path.parent / (image_path.stem + "_thumbnails.pdf")
-    pages[0].save(
-        pdf_path,
-        format="PDF",
-        save_all=True,
-        append_images=pages[1:],
-        resolution=DPI,
-    )
-
-    print(
-        f"\nOK  PDF written: {pdf_path}"
-        f"  ({len(pages)} page(s), {n_styles} style(s) + original)"
-    )
+    if args.pdfoverview:
+        cmd_pdfoverview(
+            image_path, styles,
+            tile_size=args.tile_size,
+            overlap=args.overlap,
+            strength=args.strength,
+            use_float16=args.float16,
+        )
+    else:
+        cmd_fullimage(
+            image_path, styles,
+            tile_size=args.tile_size,
+            overlap=args.overlap,
+            strength=args.strength,
+            use_float16=args.float16,
+        )
 
 
 if __name__ == "__main__":

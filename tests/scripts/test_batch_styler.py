@@ -7,7 +7,10 @@ Tests cover:
 - _make_page() places the first cell at (MARGIN, MARGIN)
 - build_cell_list() prepends the original image with label "Original"
 - build_cell_list() includes all styled results after the original
-- main() integration: mock engine, verify PDF is created and is a valid PDF
+- _style_name_to_filename() sanitises names for use as file-system stems
+- main() --pdfoverview: mock engine, verify PDF is created and is a valid PDF
+- main() --fullimage: mock engine, verify per-style JPEGs are written
+- main() without mode flag: exits with code 1
 - Original image is the first cell (pixel check)
 """
 from __future__ import annotations
@@ -172,7 +175,27 @@ class TestOriginalCellFirst:
 
 
 # ---------------------------------------------------------------------------
-# Integration: main() produces a valid PDF
+# _style_name_to_filename
+# ---------------------------------------------------------------------------
+
+class TestStyleNameToFilename:
+    def test_spaces_become_underscores(self) -> None:
+        assert bs._style_name_to_filename("Rain Princess") == "rain_princess"
+
+    def test_already_lower(self) -> None:
+        assert bs._style_name_to_filename("candy") == "candy"
+
+    def test_special_chars_replaced(self) -> None:
+        result = bs._style_name_to_filename("Style/One:Two")
+        assert "/" not in result
+        assert ":" not in result
+
+    def test_output_is_non_empty(self) -> None:
+        assert bs._style_name_to_filename("X") != ""
+
+
+# ---------------------------------------------------------------------------
+# Integration: main() --pdfoverview
 # ---------------------------------------------------------------------------
 
 class TestMainIntegration:
@@ -206,8 +229,7 @@ class TestMainIntegration:
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            # Patch sys.argv for argparse
-            with patch("sys.argv", ["batch_styler.py", str(photo)]):
+            with patch("sys.argv", ["batch_styler.py", "--pdfoverview", str(photo)]):
                 bs.main()
 
         pdf_path = tmp_path / "photo_thumbnails.pdf"
@@ -248,7 +270,7 @@ class TestMainIntegration:
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            with patch("sys.argv", ["batch_styler.py", str(photo)]):
+            with patch("sys.argv", ["batch_styler.py", "--pdfoverview", str(photo)]):
                 bs.main()
 
         # Open the PDF and check page count via byte scanning
@@ -256,3 +278,91 @@ class TestMainIntegration:
         # Count "/Page " occurrences (each page object contains this)
         page_count = pdf_bytes.count(b"/Type /Page\n") + pdf_bytes.count(b"/Type/Page\n")
         assert page_count >= 2, f"Expected >=2 PDF pages, found {page_count}"
+
+    def test_no_mode_flag_exits_with_error(self, tmp_path: Path) -> None:
+        """Calling main() without --pdfoverview or --fullimage must exit with code 1."""
+        photo = tmp_path / "photo.jpg"
+        _solid((100, 100, 100), size=64).save(photo)
+        with pytest.raises(SystemExit) as exc_info:
+            with patch("sys.argv", ["batch_styler.py", str(photo)]):
+                bs.main()
+        assert exc_info.value.code == 1
+
+
+# ---------------------------------------------------------------------------
+# Integration: main() --fullimage
+# ---------------------------------------------------------------------------
+
+class TestMainFullImage:
+    def _setup_catalog(self, tmp_path: Path, n: int = 3) -> tuple[Path, list[dict]]:
+        """Create n fake style entries in a temporary catalog."""
+        entries = []
+        for i in range(n):
+            sid = f"style_{i}"
+            onnx = tmp_path / "styles" / sid / "model.onnx"
+            onnx.parent.mkdir(parents=True, exist_ok=True)
+            onnx.write_bytes(b"fake")
+            entries.append({
+                "id": sid,
+                "name": f"Style {i}",
+                "model_path": f"styles/{sid}/model.onnx",
+            })
+        (tmp_path / "styles" / "catalog.json").write_text(
+            json.dumps({"styles": entries}), encoding="utf-8"
+        )
+        photo = tmp_path / "photo.jpg"
+        _solid((100, 150, 200), size=128).save(photo)
+        return photo, entries
+
+    def test_jpeg_per_style_created(self, tmp_path: Path) -> None:
+        """One JPEG is written for every style."""
+        photo, entries = self._setup_catalog(tmp_path, n=3)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=128)
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            with patch("sys.argv", ["batch_styler.py", "--fullimage", str(photo)]):
+                bs.main()
+
+        for e in entries:
+            stem = bs._style_name_to_filename(e["name"])
+            out = tmp_path / f"photo_{stem}.jpg"
+            assert out.exists(), f"Missing output: {out.name}"
+            assert out.stat().st_size > 0
+
+    def test_original_not_duplicated(self, tmp_path: Path) -> None:
+        """No file named photo_original.jpg should be written."""
+        photo, _ = self._setup_catalog(tmp_path, n=2)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((10, 10, 10), size=64)
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            with patch("sys.argv", ["batch_styler.py", "--fullimage", str(photo)]):
+                bs.main()
+
+        assert not (tmp_path / "photo_original.jpg").exists()
+
+    def test_output_is_valid_jpeg(self, tmp_path: Path) -> None:
+        """Each written file should open as a valid JPEG."""
+        photo, entries = self._setup_catalog(tmp_path, n=1)
+        mock_engine = MagicMock()
+        result_img = _solid((200, 100, 50), size=128)
+        mock_engine.apply.return_value = result_img
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            with patch("sys.argv", ["batch_styler.py", "--fullimage", str(photo)]):
+                bs.main()
+
+        stem = bs._style_name_to_filename(entries[0]["name"])
+        out = tmp_path / f"photo_{stem}.jpg"
+        opened = Image.open(out)
+        assert opened.format == "JPEG"
