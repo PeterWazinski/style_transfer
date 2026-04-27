@@ -23,7 +23,7 @@ from typing import Optional
 
 from PIL.Image import Image as PILImage
 from PySide6.QtGui import QAction, QPixmap
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEventLoop
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -45,6 +45,7 @@ from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.registry import StyleRegistry
 from src.core.settings import AppSettings
+from src.stylist.apply_worker import ApplyWorker
 from src.stylist.photo_canvas import PhotoCanvasView
 from src.stylist.settings_dialog import SettingsDialog
 from src.stylist.style_gallery import StyleGalleryView
@@ -266,10 +267,11 @@ class MainWindow(QMainWindow):
     def _create_progress_dialog(self, label: str = "Processing tiles\u2026") -> QProgressDialog:
         """Return a modal :class:`QProgressDialog` centred over this window.
 
-        The dialog is configured with no Cancel button (Phase 1).  It only
-        becomes visible after 400 ms so it does not flash for tiny images.
+        A *Cancel* button is shown; it requests interruption of the worker
+        thread (wired in :meth:`_run_apply_worker`).  The dialog only becomes
+        visible after 400 ms so it does not flash for tiny images.
         """
-        dlg = QProgressDialog(label, None, 0, 100, self)
+        dlg = QProgressDialog(label, "Cancel", 0, 100, self)
         dlg.setWindowTitle("Applying Style")
         dlg.setWindowModality(Qt.WindowModality.WindowModal)
         dlg.setMinimumDuration(400)
@@ -278,28 +280,69 @@ class MainWindow(QMainWindow):
         dlg.setValue(0)
         return dlg
 
-    def _engine_apply_with_progress(
+    def _run_apply_worker(
         self,
         source: PILImage,
         style_id: str,
         strength: float,
         dlg: QProgressDialog,
-    ) -> PILImage:
-        """Call :meth:`engine.apply` and update *dlg* after each tile."""
-        def _cb(done: int, total: int) -> None:
-            if total > 0:
-                dlg.setValue(int(done / total * 100))
-            QApplication.processEvents()
+    ) -> PILImage | None:
+        """Run :class:`ApplyWorker` in a background thread and wait for it.
 
-        return self._engine.apply(
-            source,
-            style_id,
+        A local :class:`QEventLoop` is executed while the worker is running so
+        the main event loop stays alive (the dialog repaints, the Cancel button
+        responds).  Returns the styled :class:`PIL.Image` on success, or
+        ``None`` on cancellation or error.  Errors are shown in a
+        :class:`QMessageBox` before returning.
+        """
+        worker = ApplyWorker(
+            engine=self._engine,
+            source=source,
+            style_id=style_id,
             strength=strength,
             tile_size=self._settings.tile_size,
             overlap=self._settings.overlap,
             use_float16=self._settings.use_float16,
-            progress_callback=_cb,
         )
+
+        result_holder: list[PILImage | None] = [None]
+        error_holder: list[str | None] = [None]
+        cancelled_holder: list[bool] = [False]
+        loop = QEventLoop()
+
+        def _on_progress(done: int, total: int) -> None:
+            if total > 0:
+                dlg.setValue(int(done / total * 100))
+
+        def _on_finished(img: PILImage) -> None:
+            result_holder[0] = img
+            loop.quit()
+
+        def _on_error(msg: str) -> None:
+            error_holder[0] = msg
+            loop.quit()
+
+        def _on_cancelled() -> None:
+            cancelled_holder[0] = True
+            loop.quit()
+
+        worker.progress.connect(_on_progress)
+        worker.finished.connect(_on_finished)
+        worker.error.connect(_on_error)
+        worker.cancelled.connect(_on_cancelled)
+        # Wire Cancel button → request interruption in the worker thread.
+        dlg.canceled.connect(worker.requestInterruption)
+
+        worker.start()
+        loop.exec()
+        worker.wait()   # ensure thread has fully exited before we continue
+
+        if cancelled_holder[0]:
+            return None
+        if error_holder[0]:
+            QMessageBox.critical(self, "Apply Error", error_holder[0])
+            return None
+        return result_holder[0]
 
     # ------------------------------------------------------------------
     # Apply / Re-Apply
@@ -307,8 +350,6 @@ class MainWindow(QMainWindow):
 
     def _reapply_style(self, style_id: str, strength: float) -> None:
         """Apply *style_id* to the already-styled photo (chain styles)."""
-        # Capture source NOW, before processEvents() could overwrite self._styled_photo
-        # via a queued slider-released signal firing _apply_style.
         source_photo = self._styled_photo
         if source_photo is None:
             return
@@ -318,16 +359,15 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
         dlg = self._create_progress_dialog("Re-applying style\u2026")
         try:
-            result = self._engine_apply_with_progress(source_photo, style_id, strength, dlg)
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Apply Error", str(exc))
-            self._status.showMessage("Error during style transfer.")
-            return
+            result = self._run_apply_worker(source_photo, style_id, strength, dlg)
         finally:
             dlg.close()
             QApplication.restoreOverrideCursor()
             self.canvas.apply_button.setEnabled(True)
             self.canvas.reapply_button.setEnabled(True)
+        if result is None:
+            self._status.showMessage("Re-apply cancelled." if dlg.wasCanceled() else "Error during style transfer.")
+            return
         # Show the previous styled result on the left for comparison
         self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(source_photo))
         self._styled_photo_input = source_photo   # the input to this new chain step
@@ -355,16 +395,15 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
         dlg = self._create_progress_dialog("Adjusting strength\u2026")
         try:
-            result = self._engine_apply_with_progress(source, style_id, strength, dlg)
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Apply Error", str(exc))
-            self._status.showMessage("Error during style transfer.")
-            return
+            result = self._run_apply_worker(source, style_id, strength, dlg)
         finally:
             dlg.close()
             QApplication.restoreOverrideCursor()
             self.canvas.apply_button.setEnabled(True)
             self.canvas.reapply_button.setEnabled(True)
+        if result is None:
+            self._status.showMessage("Adjustment cancelled." if dlg.wasCanceled() else "Error during style transfer.")
+            return
         # Keep the left pane unchanged — only update the right pane & buffer
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
@@ -379,17 +418,14 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
         dlg = self._create_progress_dialog()
         try:
-            result = self._engine_apply_with_progress(
-                self._current_photo, style_id, strength, dlg
-            )
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Apply Error", str(exc))
-            self._status.showMessage("Error during style transfer.")
-            return
+            result = self._run_apply_worker(self._current_photo, style_id, strength, dlg)
         finally:
             dlg.close()
             QApplication.restoreOverrideCursor()
             self.canvas.apply_button.setEnabled(True)
+        if result is None:
+            self._status.showMessage("Apply cancelled." if dlg.wasCanceled() else "Error during style transfer.")
+            return
         self._styled_photo_input = self._current_photo   # record what fed this result
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
