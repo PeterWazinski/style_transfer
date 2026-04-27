@@ -98,10 +98,17 @@ class StyleTransferEngine:
 
         providers: list[str] = _PROVIDER_STACKS[self._execution_provider]
         try:
-            session: ort.InferenceSession = ort.InferenceSession(
-                str(model_path),
-                providers=providers,
-            )
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="Specified provider .* is not in available provider names",
+                    category=UserWarning,
+                )
+                session: ort.InferenceSession = ort.InferenceSession(
+                    str(model_path),
+                    providers=providers,
+                )
         except Exception as exc:  # noqa: BLE001
             raise CorruptModelError(
                 f"Failed to load ONNX model '{model_path}': {exc}"
