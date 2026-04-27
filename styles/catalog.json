@@ -71,6 +71,16 @@
       "model_path": "styles/escher/model.onnx",
       "preview_path": "styles/escher/preview.jpg",
       "is_builtin": false
+    },
+    {
+      "id": "anime",
+      "name": "Anime",
+      "description": "AnimeGANv3",
+      "author": "PeterWazinski",
+      "model_path": "styles/anime/model.onnx",
+      "preview_path": "styles/anime/preview.jpg",
+      "is_builtin": false,
+      "tensor_layout": "nhwc_tanh"
     }
   ]
 }
