@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QScrollArea,
     QStatusBar,
@@ -258,6 +259,52 @@ class MainWindow(QMainWindow):
             f"Opened: {path.name}  ({image.width}\u00d7{image.height}){note}"
         )
 
+    # ------------------------------------------------------------------
+    # Progress dialog helpers
+    # ------------------------------------------------------------------
+
+    def _create_progress_dialog(self, label: str = "Processing tiles\u2026") -> QProgressDialog:
+        """Return a modal :class:`QProgressDialog` centred over this window.
+
+        The dialog is configured with no Cancel button (Phase 1).  It only
+        becomes visible after 400 ms so it does not flash for tiny images.
+        """
+        dlg = QProgressDialog(label, None, 0, 100, self)
+        dlg.setWindowTitle("Applying Style")
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setMinimumDuration(400)
+        dlg.setAutoClose(False)
+        dlg.setAutoReset(False)
+        dlg.setValue(0)
+        return dlg
+
+    def _engine_apply_with_progress(
+        self,
+        source: PILImage,
+        style_id: str,
+        strength: float,
+        dlg: QProgressDialog,
+    ) -> PILImage:
+        """Call :meth:`engine.apply` and update *dlg* after each tile."""
+        def _cb(done: int, total: int) -> None:
+            if total > 0:
+                dlg.setValue(int(done / total * 100))
+            QApplication.processEvents()
+
+        return self._engine.apply(
+            source,
+            style_id,
+            strength=strength,
+            tile_size=self._settings.tile_size,
+            overlap=self._settings.overlap,
+            use_float16=self._settings.use_float16,
+            progress_callback=_cb,
+        )
+
+    # ------------------------------------------------------------------
+    # Apply / Re-Apply
+    # ------------------------------------------------------------------
+
     def _reapply_style(self, style_id: str, strength: float) -> None:
         """Apply *style_id* to the already-styled photo (chain styles)."""
         # Capture source NOW, before processEvents() could overwrite self._styled_photo
@@ -269,21 +316,15 @@ class MainWindow(QMainWindow):
         self.canvas.apply_button.setEnabled(False)
         self.canvas.reapply_button.setEnabled(False)
         QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
-        QApplication.processEvents()
+        dlg = self._create_progress_dialog("Re-applying style\u2026")
         try:
-            result = self._engine.apply(
-                source_photo,
-                style_id,
-                strength=strength,
-                tile_size=self._settings.tile_size,
-                overlap=self._settings.overlap,
-                use_float16=self._settings.use_float16,
-            )
+            result = self._engine_apply_with_progress(source_photo, style_id, strength, dlg)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Apply Error", str(exc))
             self._status.showMessage("Error during style transfer.")
             return
         finally:
+            dlg.close()
             QApplication.restoreOverrideCursor()
             self.canvas.apply_button.setEnabled(True)
             self.canvas.reapply_button.setEnabled(True)
@@ -312,21 +353,15 @@ class MainWindow(QMainWindow):
         self.canvas.apply_button.setEnabled(False)
         self.canvas.reapply_button.setEnabled(False)
         QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
-        QApplication.processEvents()
+        dlg = self._create_progress_dialog("Adjusting strength\u2026")
         try:
-            result = self._engine.apply(
-                source,
-                style_id,
-                strength=strength,
-                tile_size=self._settings.tile_size,
-                overlap=self._settings.overlap,
-                use_float16=self._settings.use_float16,
-            )
+            result = self._engine_apply_with_progress(source, style_id, strength, dlg)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Apply Error", str(exc))
             self._status.showMessage("Error during style transfer.")
             return
         finally:
+            dlg.close()
             QApplication.restoreOverrideCursor()
             self.canvas.apply_button.setEnabled(True)
             self.canvas.reapply_button.setEnabled(True)
@@ -339,24 +374,20 @@ class MainWindow(QMainWindow):
     def _apply_style(self, style_id: str, strength: float) -> None:
         if self._current_photo is None:
             return
-        self._status.showMessage("Applying style…")
+        self._status.showMessage("Applying style\u2026")
         self.canvas.apply_button.setEnabled(False)
         QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
-        QApplication.processEvents()  # flush cursor + status bar before blocking
+        dlg = self._create_progress_dialog()
         try:
-            result = self._engine.apply(
-                self._current_photo,
-                style_id,
-                strength=strength,
-                tile_size=self._settings.tile_size,
-                overlap=self._settings.overlap,
-                use_float16=self._settings.use_float16,
+            result = self._engine_apply_with_progress(
+                self._current_photo, style_id, strength, dlg
             )
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Apply Error", str(exc))
             self._status.showMessage("Error during style transfer.")
             return
         finally:
+            dlg.close()
             QApplication.restoreOverrideCursor()
             self.canvas.apply_button.setEnabled(True)
         self._styled_photo_input = self._current_photo   # record what fed this result
