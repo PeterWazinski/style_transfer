@@ -151,7 +151,13 @@ class StyleTransferEngine:
                 "Try reducing tile_size in Settings."
             ) from exc
         styled = np.clip(output[0][0].transpose(1, 2, 0), 0, 255).astype(np.uint8)
-        return Image.fromarray(styled)
+        result = Image.fromarray(styled)
+        # Some ONNX models pad input to an alignment boundary, making the
+        # output slightly larger than the input tile.  Crop back to the
+        # original tile dimensions so merge_tiles array slices always match.
+        if result.size != tile.size:
+            result = result.crop((0, 0, tile.width, tile.height))
+        return result
 
     # ------------------------------------------------------------------
     # Public API
