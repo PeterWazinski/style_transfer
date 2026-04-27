@@ -81,6 +81,16 @@
       "preview_path": "styles/anime/preview.jpg",
       "is_builtin": false,
       "tensor_layout": "nhwc_tanh"
+    },
+    {
+      "id": "muchaworks",
+      "name": "MuchaWorks",
+      "description": "",
+      "author": "PeterWazinski",
+      "model_path": "styles/muchaworks/model.onnx",
+      "preview_path": "styles/muchaworks/preview.jpg",
+      "is_builtin": false,
+      "tensor_layout": "nchw"
     }
   ]
 }
