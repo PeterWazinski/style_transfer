@@ -94,6 +94,27 @@ def _make_page(
 
 
 # ---------------------------------------------------------------------------
+# Cell list builder (exported for unit tests)
+# ---------------------------------------------------------------------------
+
+def build_cell_list(
+    original: Image.Image,
+    styled_results: list[tuple[str, Image.Image]],
+) -> list[tuple[str, Image.Image]]:
+    """Return the ordered cell list: original first, then styled results.
+
+    Args:
+        original:       The unmodified source image.
+        styled_results: List of (style_name, styled_image) pairs.
+
+    Returns:
+        List starting with ``("Original", original)`` followed by all
+        *styled_results* in their original order.
+    """
+    return [("Original", original)] + list(styled_results)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -144,7 +165,8 @@ def main() -> None:
     engine = StyleTransferEngine()
     font = _load_font(int(LABEL_H * 0.60))
 
-    styled_results: list[tuple[str, Image.Image]] = []
+    # Original image is always the first cell
+    raw_styled: list[tuple[str, Image.Image]] = []
 
     for style in styles:
         style_id: str   = style["id"]
@@ -173,13 +195,16 @@ def main() -> None:
             # Release the ONNX session to keep GPU/CPU memory manageable
             engine._sessions.pop(style_id, None)  # noqa: SLF001
 
-        styled_results.append((style_name, result))
+        raw_styled.append((style_name, result))
 
-    if not styled_results:
+    if not raw_styled:
         sys.exit("No styles were applied successfully — nothing to write.")
+
+    styled_results = build_cell_list(source, raw_styled)
 
     # ── Compose PDF pages ────────────────────────────────────────────────────
     print()
+    n_styles = len(raw_styled)  # excludes the "Original" cell
     n_pages = (len(styled_results) + CELLS_PER_PAGE - 1) // CELLS_PER_PAGE
     print(f"Composing {n_pages} PDF page(s) …", flush=True)
 
@@ -198,8 +223,8 @@ def main() -> None:
     )
 
     print(
-        f"\n✓  PDF written: {pdf_path}"
-        f"  ({len(pages)} page(s), {len(styled_results)} style(s))"
+        f"\nOK  PDF written: {pdf_path}"
+        f"  ({len(pages)} page(s), {n_styles} style(s) + original)"
     )
 
 
