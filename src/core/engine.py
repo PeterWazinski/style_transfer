@@ -69,17 +69,28 @@ class StyleTransferEngine:
             )
         self._execution_provider: str = execution_provider
         self._sessions: dict[str, "ort.InferenceSession"] = {}
+        # Per-model tensor layout ("nchw" or "nhwc_tanh")
+        self._model_meta: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Model management
     # ------------------------------------------------------------------
 
-    def load_model(self, style_id: str, model_path: Path | str) -> None:
+    def load_model(
+        self,
+        style_id: str,
+        model_path: Path | str,
+        *,
+        tensor_layout: str = "nchw",
+    ) -> None:
         """Load an ONNX model and register it under *style_id*.
 
         Args:
-            style_id:   Unique identifier (e.g. "candy").
-            model_path: Path (or str) to the .onnx file.
+            style_id:      Unique identifier (e.g. "candy").
+            model_path:    Path (or str) to the .onnx file.
+            tensor_layout: Tensor layout of the model.  One of:
+                           ``"nchw"``       – standard NST TransformerNet
+                           ``"nhwc_tanh"``  – AnimeGANv3-style TF models
 
         Raises:
             StyleModelNotFoundError: If the file does not exist.
@@ -114,7 +125,8 @@ class StyleTransferEngine:
                 f"Failed to load ONNX model '{model_path}': {exc}"
             ) from exc
         self._sessions[style_id] = session
-        logger.info("Loaded model '%s' from %s", style_id, model_path)
+        self._model_meta[style_id] = tensor_layout
+        logger.info("Loaded model '%s' from %s (layout=%s)", style_id, model_path, tensor_layout)
 
     def is_loaded(self, style_id: str) -> bool:
         return style_id in self._sessions
@@ -129,6 +141,7 @@ class StyleTransferEngine:
         tile: Image.Image,
         *,
         use_float16: bool = False,
+        tensor_layout: str = "nchw",
     ) -> Image.Image:
         """Run one tile through the ONNX session.
 
@@ -144,6 +157,8 @@ class StyleTransferEngine:
         Raises:
             OOMError: If there is insufficient memory to allocate tile buffers.
         """
+        if tensor_layout == "nhwc_tanh":
+            return self._infer_tile_nhwc_tanh(session, tile)
         try:
             arr = np.array(tile.convert("RGB"), dtype=np.float32)
             # Shape: [1, 3, H, W]
@@ -164,6 +179,50 @@ class StyleTransferEngine:
         # original tile dimensions so merge_tiles array slices always match.
         if result.size != tile.size:
             result = result.crop((0, 0, tile.width, tile.height))
+        return result
+
+    def _infer_tile_nhwc_tanh(
+        self,
+        session: "ort.InferenceSession",
+        tile: Image.Image,
+    ) -> Image.Image:
+        """Inference for NHWC models with tanh-normalised I/O (e.g. AnimeGANv3).
+
+        Input : [1, H, W, 3]  float32  range [-1, 1]
+        Output: [1, H, W, 3]  float32  range [-1, 1]
+        H and W are rounded down to the nearest multiple of 8 (min 256).
+        The result is resized back to the original tile dimensions.
+        """
+        orig_w, orig_h = tile.size
+
+        def _to_8(x: int) -> int:
+            return max(256, x - x % 8)
+
+        w8, h8 = _to_8(orig_w), _to_8(orig_h)
+        work_tile: Image.Image = (
+            tile.resize((w8, h8), Image.BILINEAR)
+            if (w8, h8) != (orig_w, orig_h)
+            else tile
+        )
+        try:
+            arr = np.array(work_tile.convert("RGB"), dtype=np.float32)
+            # Normalise to [-1, 1], layout [1, H, W, 3]
+            arr = arr / 127.5 - 1.0
+            tensor: np.ndarray = arr[np.newaxis, ...]
+            input_name: str = session.get_inputs()[0].name
+            output: list[np.ndarray] = session.run(None, {input_name: tensor})
+        except MemoryError as exc:
+            raise OOMError(
+                f"Out of memory processing a tile of size {tile.size}. "
+                "Try reducing tile_size in Settings."
+            ) from exc
+        # De-normalise from [-1, 1] to [0, 255]
+        result_arr = np.clip(
+            (output[0][0] + 1.0) / 2.0 * 255.0, 0, 255
+        ).astype(np.uint8)
+        result = Image.fromarray(result_arr)
+        if result.size != (orig_w, orig_h):
+            result = result.resize((orig_w, orig_h), Image.BILINEAR)
         return result
 
     # ------------------------------------------------------------------
@@ -211,6 +270,7 @@ class StyleTransferEngine:
             raise ValueError(f"strength must be in [0.0, 1.0], got {strength}")
 
         session = self._sessions[style_id]
+        tensor_layout: str = self._model_meta.get(style_id, "nchw")
         original_size = content_image.size
         tiles: list[tuple[TileInfo, Image.Image]] = split_tiles(
             content_image, tile_size=tile_size, overlap=overlap
@@ -220,7 +280,9 @@ class StyleTransferEngine:
         total: int = len(tiles)
         for i, (info, tile) in enumerate(tiles):
             logger.debug("Processing tile %d/%d", i + 1, total)
-            styled_tile = self._infer_tile(session, tile, use_float16=use_float16)
+            styled_tile = self._infer_tile(
+                session, tile, use_float16=use_float16, tensor_layout=tensor_layout
+            )
             styled_tiles.append((info, styled_tile))
             if progress_callback is not None:
                 progress_callback(i + 1, total)

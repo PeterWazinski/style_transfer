@@ -26,6 +26,10 @@ class StyleModel:
     description: str = ""
     author: str = ""
     is_builtin: bool = True
+    # Tensor layout expected by the ONNX model:
+    #   "nchw"       – standard NST TransformerNet: [1,3,H,W], values [0,255]
+    #   "nhwc_tanh"  – AnimeGANv3-style TF models: [1,H,W,3], values [-1,1]
+    tensor_layout: str = "nchw"
 
     # ------------------------------------------------------------------
     # Convenience properties

@@ -186,7 +186,9 @@ class MainWindow(QMainWindow):
             project_root: Path = Path(__file__).parent.parent.parent
             model_path: Path = style.model_path_resolved(project_root)
             try:
-                self._engine.load_model(style.id, model_path)
+                self._engine.load_model(
+                    style.id, model_path, tensor_layout=style.tensor_layout
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Could not load model '%s' from %s", style.id, model_path)
                 self._status.showMessage(f"Could not load model: {exc}")
