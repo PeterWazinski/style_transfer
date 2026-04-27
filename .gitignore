@@ -53,6 +53,9 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Temporary download folder (e.g. third-party ONNX models before integration)
+tmp/
+
 # Translations
 *.mo
 *.pot
