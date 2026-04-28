@@ -1,6 +1,7 @@
 """StyleTransferEngine — ONNX-based style inference with tiling support."""
 from __future__ import annotations
 
+import gc
 import logging
 from pathlib import Path
 from typing import Callable
@@ -131,6 +132,20 @@ class StyleTransferEngine:
     def is_loaded(self, style_id: str) -> bool:
         return style_id in self._sessions
 
+    def unload_model(self, style_id: str) -> None:
+        """Release the ONNX session for *style_id* and free its GPU memory."""
+        self._sessions.pop(style_id, None)
+        self._model_meta.pop(style_id, None)
+        gc.collect()
+        logger.info("Unloaded model '%s'.", style_id)
+
+    def unload_all_models(self) -> None:
+        """Release all cached ONNX sessions and free GPU/DirectML memory."""
+        self._sessions.clear()
+        self._model_meta.clear()
+        gc.collect()
+        logger.info("All ONNX sessions unloaded.")
+
     # ------------------------------------------------------------------
     # Core inference helpers
     # ------------------------------------------------------------------
@@ -172,6 +187,14 @@ class StyleTransferEngine:
                 f"Out of memory processing a tile of size {tile.size}. "
                 "Try reducing tile_size in Settings."
             ) from exc
+        except Exception as exc:  # noqa: BLE001
+            _msg = str(exc).lower()
+            if any(k in _msg for k in ("out of memory", "insufficient", "oom", ": 6 :", "error code: 6")):
+                raise OOMError(
+                    f"GPU/DirectML out of memory processing a tile of size {tile.size}. "
+                    "Open a new photo or reduce tile_size in Settings to free memory."
+                ) from exc
+            raise
         styled = np.clip(output[0][0].transpose(1, 2, 0), 0, 255).astype(np.uint8)
         result = Image.fromarray(styled)
         # Some ONNX models pad input to an alignment boundary, making the
@@ -216,6 +239,14 @@ class StyleTransferEngine:
                 f"Out of memory processing a tile of size {tile.size}. "
                 "Try reducing tile_size in Settings."
             ) from exc
+        except Exception as exc:  # noqa: BLE001
+            _msg = str(exc).lower()
+            if any(k in _msg for k in ("out of memory", "insufficient", "oom", ": 6 :", "error code: 6")):
+                raise OOMError(
+                    f"GPU/DirectML out of memory processing a tile of size {tile.size}. "
+                    "Open a new photo or reduce tile_size in Settings to free memory."
+                ) from exc
+            raise
         # De-normalise from [-1, 1] to [0, 255]
         result_arr = np.clip(
             (output[0][0] + 1.0) / 2.0 * 255.0, 0, 255

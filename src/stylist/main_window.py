@@ -224,6 +224,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Load Error", str(exc))
             return
+        self._engine.unload_all_models()  # free DirectML/GPU memory for clean state
         self._current_photo = image
         self._styled_photo = None
         self._styled_photo_input = None
@@ -255,6 +256,7 @@ class MainWindow(QMainWindow):
 
         self._settings.last_open_dir = str(path.parent)
         self._settings.save()
+        self._engine.unload_all_models()  # free DirectML/GPU memory for clean state
         self._current_photo = image
         self._current_photo_path = path
         self._styled_photo = None          # clear any previous styled result
@@ -351,6 +353,7 @@ class MainWindow(QMainWindow):
         if cancelled_holder[0]:
             return None
         if error_holder[0]:
+            logger.error("Style transfer error: %s", error_holder[0])
             QMessageBox.critical(self, "Apply Error", error_holder[0])
             return None
         return result_holder[0]
