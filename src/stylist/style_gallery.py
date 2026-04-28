@@ -8,6 +8,7 @@ connects to the appropriate service calls.
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QModelIndex, Qt, Signal
@@ -27,7 +28,11 @@ from src.stylist.widgets.thumbnail_delegate import ThumbnailDelegate
 logger: logging.Logger = logging.getLogger(__name__)
 
 _PLACEHOLDER_SIZE: int = 128
-_PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
+_PROJECT_ROOT: Path = (
+    Path(sys.executable).parent
+    if getattr(sys, "frozen", False)
+    else Path(__file__).resolve().parent.parent.parent
+)
 
 
 def _load_pixmap(path: Path | str | None) -> QPixmap:
