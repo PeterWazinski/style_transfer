@@ -18,6 +18,7 @@ Layout
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -183,7 +184,11 @@ class MainWindow(QMainWindow):
         # Preload ONNX if not already loaded
         if not self._engine.is_loaded(style.id):
             # model_path is stored as a str relative to the project root
-            project_root: Path = Path(__file__).parent.parent.parent
+            project_root: Path = (
+                Path(sys.executable).parent
+                if getattr(sys, "frozen", False)
+                else Path(__file__).parent.parent.parent
+            )
             model_path: Path = style.model_path_resolved(project_root)
             try:
                 self._engine.load_model(
