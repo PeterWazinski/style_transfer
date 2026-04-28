@@ -111,8 +111,8 @@ class MainWindow(QMainWindow):
             | QDockWidget.DockWidgetFeature.DockWidgetFloatable
         )
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
-        # Initial dock width: 3 columns × 130 px + 2 gaps × 4 px + margins + scrollbar ≈ 420 px
-        self.resizeDocks([dock], [420], Qt.Orientation.Horizontal)
+        # Initial dock width: 3 columns × (130 px tile + 2×4 px spacing) + margins + scrollbar ≈ 450 px
+        self.resizeDocks([dock], [440], Qt.Orientation.Horizontal)
 
         # Status bar
         self._status = QStatusBar(self)
