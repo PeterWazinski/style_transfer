@@ -2,7 +2,8 @@
 # style_transfer.spec  –  PyInstaller spec for PetersPictureStyler
 #
 # Produces a portable app directory: dist\PetersPictureStyler\
-#   PetersPictureStylist.exe  ← the executable
+#   PetersPictureStylist.exe  ← the GUI executable
+#   BatchStyler.exe           ← headless CLI for batch processing
 #   styles\                   ← editable; add new styles here without recompiling
 #   app.log                   ← written at runtime
 #   (+ all onnxruntime / Qt DLLs)
@@ -71,6 +72,36 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# ── Analysis for BatchStyler (headless CLI, no Qt) ───────────────────────
+b = Analysis(
+    ["scripts/batch_styler.py"],
+    pathex=["."],
+    binaries=ort_binaries,
+    datas=[*ort_datas],
+    hiddenimports=[
+        "onnxruntime",
+        "onnxruntime.capi",
+        "onnxruntime.capi._pybind_state",
+        "PIL._tkinter_finder",
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[
+        "torch", "torchvision", "torchaudio", "tensorboard",
+        "PySide6", "PySide2", "PyQt5", "PyQt6",
+        "matplotlib", "scipy", "pandas",
+        "IPython", "ipykernel", "jupyter",
+        "pytest", "mypy",
+    ],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+pyz_b = PYZ(b.pure, b.zipped_data, cipher=block_cipher)
+
 # ── One-directory bundle ─────────────────────────────────────────────────
 # EXE contains only the bootloader + compressed Python code.
 # COLLECT places the exe, all DLLs, and onnxruntime data into one folder.
@@ -105,11 +136,38 @@ exe = EXE(
     entitlements_file=None,
 )
 
+exe_b = EXE(
+    pyz_b,
+    b.scripts,
+    [],                             # ← onedir: no data packing into the exe
+    name="BatchStyler",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[
+        "vcruntime140.dll",
+        "python3*.dll",
+        "DirectML.dll",
+    ],
+    runtime_tmpdir=None,
+    console=True,                   # CLI tool — output shown in console window
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
 coll = COLLECT(
     exe,
     a.binaries,
     a.zipfiles,
     a.datas,
+    exe_b,
+    b.binaries,
+    b.zipfiles,
+    b.datas,
     strip=False,
     upx=True,
     upx_exclude=[

@@ -27,10 +27,15 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-# ── Repository root: scripts/ → repo root ───────────────────────────────────
-SCRIPTS_DIR: Path = Path(__file__).resolve().parent
-REPO_ROOT: Path = SCRIPTS_DIR.parent
-sys.path.insert(0, str(REPO_ROOT))
+# ── Repository root ─────────────────────────────────────────────────────────
+# When compiled with PyInstaller, sys.executable points to BatchStyler.exe
+# which lives alongside styles\ in the dist\PetersPictureStyler\ folder.
+# In dev mode, __file__ is scripts/batch_styler.py → parent.parent = repo root.
+if getattr(sys, "frozen", False):
+    REPO_ROOT: Path = Path(sys.executable).parent
+else:
+    REPO_ROOT = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(REPO_ROOT))
 
 from src.core.engine import StyleTransferEngine  # noqa: E402
 

@@ -11,7 +11,8 @@
        without recompiling.
 
     Output: dist\PetersPictureStyler\
-              PetersPictureStylist.exe   ← double-click to run
+              PetersPictureStylist.exe   ← double-click to run GUI
+              BatchStyler.exe            ← headless CLI for batch style transfer
               styles\                    ← drop new style folders here
               app.log                    ← written at runtime
 
@@ -41,6 +42,7 @@ $VenvPip    = "$Root\.venv\Scripts\pip.exe"
 $SpecFile   = "$Root\style_transfer.spec"
 $OutputDir  = "$Root\dist\PetersPictureStyler"
 $OutputExe  = "$OutputDir\PetersPictureStylist.exe"
+$BatchExe   = "$OutputDir\BatchStyler.exe"
 
 # Verify the venv exists before doing anything else
 if (-not (Test-Path $VenvPy)) {
@@ -78,10 +80,12 @@ Write-Host "  Copied $StyleCount style folder(s) to $DstStyles"
 # ── 5. Report result ─────────────────────────────────────────────────────
 if (Test-Path $OutputExe) {
     $ExeMB   = [math]::Round((Get-Item $OutputExe).Length / 1MB, 1)
+    $BatchMB = if (Test-Path $BatchExe) { [math]::Round((Get-Item $BatchExe).Length / 1MB, 1) } else { "?" }
     $DirMB   = [math]::Round((Get-ChildItem $OutputDir -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 0)
     Write-Host "`n=== Build successful ===" -ForegroundColor Green
     Write-Host "    $OutputDir\  ($DirMB MB total)"
     Write-Host "    $OutputExe  ($ExeMB MB)"
+    Write-Host "    $BatchExe  ($BatchMB MB)"
     Write-Host ""
     Write-Host "Copy the entire dist\PetersPictureStyler\ folder to any Windows 10/11 x64 machine." -ForegroundColor Yellow
     Write-Host "To add a new style: drop its folder into styles\ and update styles\catalog.json." -ForegroundColor Yellow
