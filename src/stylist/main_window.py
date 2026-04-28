@@ -238,7 +238,7 @@ class MainWindow(QMainWindow):
         path_str, _ = QFileDialog.getOpenFileName(
             self,
             "Open Photo",
-            "",
+            self._settings.last_open_dir or "",
             "Images (*.jpg *.jpeg *.png)",
         )
         if not path_str:
@@ -253,6 +253,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Load Error", str(exc))
             return
 
+        self._settings.last_open_dir = str(path.parent)
+        self._settings.save()
         self._current_photo = image
         self._current_photo_path = path
         self._styled_photo = None          # clear any previous styled result
@@ -444,7 +446,7 @@ class MainWindow(QMainWindow):
     def _save_result(self) -> None:
         if self._styled_photo is None:
             return
-        start_dir = self._settings.default_output_dir or ""
+        start_dir = self._settings.last_save_dir or self._settings.default_output_dir or ""
         path_str, _ = QFileDialog.getSaveFileName(
             self,
             "Save Result",
@@ -459,6 +461,8 @@ class MainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Save Error", str(exc))
             return
+        self._settings.last_save_dir = str(path.parent)
+        self._settings.save()
         self._status.showMessage(f"Saved to: {path.name}")
 
     def _show_link_dialog(self, title: str, html: str) -> None:
