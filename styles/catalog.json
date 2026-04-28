@@ -91,6 +91,16 @@
       "preview_path": "styles/muchaworks/preview.jpg",
       "is_builtin": false,
       "tensor_layout": "nchw"
+    },
+    {
+      "id": "tintin",
+      "name": "Tintin",
+      "description": "Tintin Comics",
+      "author": "PeterWazinski",
+      "model_path": "styles/tintin/model.onnx",
+      "preview_path": "styles/tintin/preview.jpg",
+      "is_builtin": false,
+      "tensor_layout": "nchw"
     }
   ]
 }
