@@ -74,8 +74,8 @@ class StyleRegistry:
     # ------------------------------------------------------------------
 
     def list_styles(self) -> list[StyleModel]:
-        """Return a shallow copy of all styles in the catalog."""
-        return list(self._catalog)
+        """Return a shallow copy of all styles in the catalog, sorted alphabetically by name."""
+        return sorted(self._catalog, key=lambda s: s.name.casefold())
 
     def get(self, style_id: str) -> StyleModel:
         """Return the style with the given ID.
