@@ -256,7 +256,6 @@ class MainWindow(QMainWindow):
 
         self._settings.last_open_dir = str(path.parent)
         self._settings.save()
-        self._engine.unload_all_models()  # free DirectML/GPU memory for clean state
         self._current_photo = image
         self._current_photo_path = path
         self._styled_photo = None          # clear any previous styled result
