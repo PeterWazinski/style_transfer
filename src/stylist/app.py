@@ -27,8 +27,10 @@ def _project_root() -> Path:
     """Return the data root directory.
 
     * When running from source: the repo root (two levels above this file).
-    * When running as a PyInstaller one-file bundle: ``sys._MEIPASS``, the
-      temporary directory where the bundle is extracted at startup.
+    * When running as a PyInstaller one-directory bundle: ``sys._MEIPASS``,
+      which in onedir mode equals the folder containing the exe.  The
+      ``styles\\`` directory sits alongside the exe and is therefore found
+      at ``_project_root() / 'styles'`` without any path changes.
     """
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)  # type: ignore[attr-defined]
@@ -38,8 +40,8 @@ def _project_root() -> Path:
 def _log_path() -> Path:
     """Return a writable path for the application log file.
 
-    When frozen the log is placed next to the ``.exe`` (``sys.executable``),
-    not inside the read-only extraction temp dir.
+    When frozen the log is placed next to the ``.exe`` inside the app
+    directory (``PetersPictureStyler\\app.log``).
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent / "app.log"

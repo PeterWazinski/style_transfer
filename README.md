@@ -16,11 +16,16 @@ Inference runs entirely through ONNX Runtime — no GPU or Python knowledge requ
 
 ---
 
-## Quick Start (compiled exe)
+## Quick Start (compiled app)
 
-1. Download `dist\PetersPictureStylist.exe`
-2. Double-click — no Python or dependencies needed
+1. Copy the entire `dist\PetersPictureStyler\` folder to your machine
+2. Double-click `PetersPictureStylist.exe` — no Python or dependencies needed
 3. Open a photo · pick a style · click Apply · save the result
+
+**Add a new style without recompiling:**
+1. Drop the style folder (containing `model.onnx` + `preview.jpg`) into `PetersPictureStyler\styles\`
+2. Append the entry to `PetersPictureStyler\styles\catalog.json`
+3. Restart the app — the new style appears in the gallery
 
 ---
 
@@ -37,13 +42,15 @@ python -m venv .venv
 
 ---
 
-## Build the Exe
+## Build the App
 
 ```powershell
-.\compile.ps1        # produces dist\PetersPictureStylist.exe (~157 MB)
+.\compile.ps1        # produces dist\PetersPictureStyler\
 ```
 
 Requires PyInstaller in the venv (`pip install pyinstaller`). torch/torchvision are excluded — inference uses ONNX Runtime only.
+
+The build produces a **directory** (not a single exe). The `styles\` folder is copied in after compilation so styles remain editable without recompiling.
 
 ---
 
@@ -101,7 +108,7 @@ scripts/     Training notebooks, analysis tools, helper scripts (see scripts/ind
 docs/        Architecture notes, roadmap
 main_image_styler.py    → launch the app
 main_style_trainer.py   → train a new style (CLI)
-compile.ps1             → build the portable exe
+compile.ps1             → build the portable app directory (dist\PetersPictureStyler\)
 ```
 
 ---

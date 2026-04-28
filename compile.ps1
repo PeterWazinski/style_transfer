@@ -1,17 +1,23 @@
 <#
 .SYNOPSIS
-    Build PetersPictureStylist.exe with PyInstaller.
+    Build PetersPictureStyler app directory with PyInstaller.
 
 .DESCRIPTION
     1. Installs / upgrades PyInstaller into the project venv.
     2. Cleans any previous build/ and dist/ artefacts.
-    3. Invokes PyInstaller with style_transfer.spec to produce a single
-       self-contained portable exe (no installer needed on the target machine).
+    3. Invokes PyInstaller with style_transfer.spec to produce a one-directory
+       bundle: dist\PetersPictureStyler\
+    4. Copies styles\ into the output directory so styles can be added later
+       without recompiling.
 
-    Output: dist\PetersPictureStylist.exe
+    Output: dist\PetersPictureStyler\
+              PetersPictureStylist.exe   ← double-click to run
+              styles\                    ← drop new style folders here
+              app.log                    ← written at runtime
 
-    Copy that single file to any Windows 10/11 x64 laptop and double-click.
-    The app extracts itself to %TEMP% on first run (normal PyInstaller behaviour).
+    Copy the entire dist\PetersPictureStyler\ folder to any Windows 10/11 x64
+    machine.  To add a new style later, just drop its folder into styles\ and
+    append the entry to styles\catalog.json — no recompile needed.
 
 .NOTES
     * Only the Stylist UI app is compiled — the Trainer is a developer-only
@@ -23,17 +29,18 @@
     * torch / torchvision are excluded from the bundle (inference uses ONNX
       Runtime only).
     * UPX is used for compression if it is on PATH; if not, PyInstaller
-      silently skips it and the exe will be slightly larger.
+      silently skips it and the DLLs will be slightly larger.
 #>
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$Root      = $PSScriptRoot                              # project root
-$VenvPy    = "$Root\.venv\Scripts\python.exe"
-$VenvPip   = "$Root\.venv\Scripts\pip.exe"
-$SpecFile  = "$Root\style_transfer.spec"
-$OutputExe = "$Root\dist\PetersPictureStylist.exe"
+$Root       = $PSScriptRoot                              # project root
+$VenvPy     = "$Root\.venv\Scripts\python.exe"
+$VenvPip    = "$Root\.venv\Scripts\pip.exe"
+$SpecFile   = "$Root\style_transfer.spec"
+$OutputDir  = "$Root\dist\PetersPictureStyler"
+$OutputExe  = "$OutputDir\PetersPictureStylist.exe"
 
 # Verify the venv exists before doing anything else
 if (-not (Test-Path $VenvPy)) {
@@ -55,17 +62,29 @@ foreach ($dir in @("$Root\build", "$Root\dist")) {
 }
 
 # ── 3. Run PyInstaller ───────────────────────────────────────────────────
-Write-Host "`n=== Building PetersPictureStylist.exe (this takes a few minutes) ===" -ForegroundColor Cyan
+Write-Host "`n=== Building PetersPictureStyler\ (this takes a few minutes) ===" -ForegroundColor Cyan
 & $VenvPy -m PyInstaller $SpecFile --noconfirm
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
 
-# ── 4. Report result ─────────────────────────────────────────────────────
+# ── 4. Copy styles\ into the output directory ────────────────────────────
+Write-Host "`n=== Copying styles\ into output directory ===" -ForegroundColor Cyan
+$SrcStyles = "$Root\styles"
+$DstStyles = "$OutputDir\styles"
+if (Test-Path $DstStyles) { Remove-Item -Recurse -Force $DstStyles }
+Copy-Item -Recurse $SrcStyles $DstStyles
+$StyleCount = (Get-ChildItem $DstStyles -Directory).Count
+Write-Host "  Copied $StyleCount style folder(s) to $DstStyles"
+
+# ── 5. Report result ─────────────────────────────────────────────────────
 if (Test-Path $OutputExe) {
-    $SizeMB = [math]::Round((Get-Item $OutputExe).Length / 1MB, 1)
+    $ExeMB   = [math]::Round((Get-Item $OutputExe).Length / 1MB, 1)
+    $DirMB   = [math]::Round((Get-ChildItem $OutputDir -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 0)
     Write-Host "`n=== Build successful ===" -ForegroundColor Green
-    Write-Host "    $OutputExe  ($SizeMB MB)"
+    Write-Host "    $OutputDir\  ($DirMB MB total)"
+    Write-Host "    $OutputExe  ($ExeMB MB)"
     Write-Host ""
-    Write-Host "Copy dist\PetersPictureStylist.exe to any Windows 10/11 x64 machine and run it." -ForegroundColor Yellow
+    Write-Host "Copy the entire dist\PetersPictureStyler\ folder to any Windows 10/11 x64 machine." -ForegroundColor Yellow
+    Write-Host "To add a new style: drop its folder into styles\ and update styles\catalog.json." -ForegroundColor Yellow
 } else {
     throw "Expected output not found: $OutputExe"
 }

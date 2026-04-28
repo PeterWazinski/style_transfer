@@ -1,12 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
-# style_transfer.spec  –  PyInstaller spec for StyleTransfer
+# style_transfer.spec  –  PyInstaller spec for PetersPictureStyler
 #
-# Produces a single portable Windows exe: dist\StyleTransfer.exe
+# Produces a portable app directory: dist\PetersPictureStyler\
+#   PetersPictureStylist.exe  ← the executable
+#   styles\                   ← editable; add new styles here without recompiling
+#   app.log                   ← written at runtime
+#   (+ all onnxruntime / Qt DLLs)
+#
 # To rebuild:  .\compile.ps1
 #
 # NOTE: torch / torchvision are intentionally excluded.  They are only
 #       required for custom style *training* (a developer workflow).
 #       Inference runs entirely through ONNX Runtime and needs no torch.
+#
+# IMPORTANT: styles\ is NOT bundled into the exe.  compile.ps1 copies it
+#       into the output directory after the build so users can add new
+#       styles by dropping a folder + updating catalog.json — no recompile.
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
@@ -21,12 +30,9 @@ a = Analysis(
     pathex=["."],
     binaries=ort_binaries,
     datas=[
-        # ── Application data bundled into the exe ────────────────────────
-        # These land at sys._MEIPASS/styles/ and sys._MEIPASS/sample_images/
-        # respectively — matching the paths used by _project_root() in app.py.
-        ("styles",        "styles"),
-        ("sample_images", "sample_images"),
         # ── onnxruntime provider config / XML schemas ────────────────────
+        # styles\ and sample_images\ are NOT bundled — compile.ps1 copies
+        # styles\ into the output directory after the build.
         *ort_datas,
     ],
     hiddenimports=[
@@ -65,16 +71,15 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-# ── Single-file executable ────────────────────────────────────────────────
-# All binaries, data and zipped sources are packed into one exe.
-# On first launch Windows extracts them to %TEMP%\onefile_<pid>\ then runs.
+# ── One-directory bundle ─────────────────────────────────────────────────
+# EXE contains only the bootloader + compressed Python code.
+# COLLECT places the exe, all DLLs, and onnxruntime data into one folder.
+# In onedir mode sys._MEIPASS == the folder containing the exe, so
+# _project_root() in app.py resolves styles\ correctly without any changes.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
+    [],                             # ← onedir: no data packing into the exe
     name="PetersPictureStylist",
     debug=False,
     bootloader_ignore_signals=False,
@@ -98,4 +103,24 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[
+        "vcruntime140.dll",
+        "python3*.dll",
+        "Qt6Core.dll",
+        "Qt6Gui.dll",
+        "Qt6Widgets.dll",
+        "Qt6Network.dll",
+        "Qt6OpenGL.dll",
+        "DirectML.dll",
+    ],
+    name="PetersPictureStyler",     # → dist\PetersPictureStyler\
 )
