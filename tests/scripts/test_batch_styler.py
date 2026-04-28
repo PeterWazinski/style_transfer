@@ -366,3 +366,161 @@ class TestMainFullImage:
         out = tmp_path / f"photo_{stem}.jpg"
         opened = Image.open(out)
         assert opened.format == "JPEG"
+
+
+# ---------------------------------------------------------------------------
+# --style filter: filter_styles_by_name unit tests
+# ---------------------------------------------------------------------------
+
+class TestFilterStylesByName:
+    def _styles(self) -> list[dict]:
+        return [
+            {"id": "candy", "name": "Candy", "model_path": "styles/candy/model.onnx"},
+            {"id": "mosaic", "name": "Mosaic", "model_path": "styles/mosaic/model.onnx"},
+            {"id": "anime_hayao", "name": "Anime Hayao", "model_path": "styles/anime_hayao/model.onnx"},
+        ]
+
+    def test_exact_match_returns_single_entry(self) -> None:
+        result = bs.filter_styles_by_name(self._styles(), "Candy")
+        assert len(result) == 1
+        assert result[0]["name"] == "Candy"
+
+    def test_case_insensitive_match(self) -> None:
+        result = bs.filter_styles_by_name(self._styles(), "anime hayao")
+        assert result[0]["name"] == "Anime Hayao"
+
+    def test_uppercase_query(self) -> None:
+        result = bs.filter_styles_by_name(self._styles(), "MOSAIC")
+        assert result[0]["name"] == "Mosaic"
+
+    def test_leading_trailing_whitespace_stripped(self) -> None:
+        result = bs.filter_styles_by_name(self._styles(), "  Candy  ")
+        assert result[0]["name"] == "Candy"
+
+    def test_unknown_style_aborts_with_exit(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            bs.filter_styles_by_name(self._styles(), "NonExistent")
+        assert exc_info.value.code is not None
+
+    def test_error_message_contains_style_name(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            bs.filter_styles_by_name(self._styles(), "Ghost")
+        assert "Ghost" in str(exc_info.value.code)
+
+    def test_error_message_lists_available_styles(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            bs.filter_styles_by_name(self._styles(), "Ghost")
+        msg = str(exc_info.value.code)
+        assert "Candy" in msg
+        assert "Mosaic" in msg
+
+    def test_empty_catalog_aborts(self) -> None:
+        with pytest.raises(SystemExit):
+            bs.filter_styles_by_name([], "Candy")
+
+
+# ---------------------------------------------------------------------------
+# --style filter: integration with main()
+# ---------------------------------------------------------------------------
+
+class TestMainStyleFilter:
+    """Verify that --style correctly limits which styles are processed."""
+
+    def _setup_catalog(self, tmp_path: Path) -> Path:
+        """Write a 3-style catalog and a source photo into tmp_path."""
+        entries = [
+            {"id": "candy",  "name": "Candy",  "model_path": "styles/candy/model.onnx"},
+            {"id": "mosaic", "name": "Mosaic", "model_path": "styles/mosaic/model.onnx"},
+            {"id": "udnie",  "name": "Udnie",  "model_path": "styles/udnie/model.onnx"},
+        ]
+        for e in entries:
+            onnx = tmp_path / e["model_path"]
+            onnx.parent.mkdir(parents=True, exist_ok=True)
+            onnx.write_bytes(b"fake")
+        (tmp_path / "styles" / "catalog.json").write_text(
+            json.dumps({"styles": entries}), encoding="utf-8"
+        )
+        photo = tmp_path / "photo.jpg"
+        _solid((100, 100, 100), size=64).save(photo)
+        return photo
+
+    def _run_fullimage(self, tmp_path: Path, *extra: str) -> list[str]:
+        """Run --fullimage, intercept _apply_all_styles, return style names received."""
+        photo = self._setup_catalog(tmp_path)
+        called: list[str] = []
+
+        def _fake_apply(
+            source: Image.Image,
+            styles: list[dict],
+            tile_size: int,
+            overlap: int,
+            strength: float,
+            use_float16: bool,
+        ) -> list[tuple[str, Image.Image]]:
+            called.extend(s["name"] for s in styles)
+            return [(styles[0]["name"], _solid((1, 2, 3)))]
+
+        argv = ["batch_styler.py", "--fullimage", str(photo), *extra]
+        with (
+            patch.object(bs, "REPO_ROOT", tmp_path),
+            patch.object(bs, "_apply_all_styles", side_effect=_fake_apply),
+        ):
+            with patch("sys.argv", argv):
+                bs.main()
+        return called
+
+    def test_no_filter_passes_all_styles(self, tmp_path: Path) -> None:
+        called = self._run_fullimage(tmp_path)
+        assert called == ["Candy", "Mosaic", "Udnie"]
+
+    def test_style_filter_passes_only_matching_style(self, tmp_path: Path) -> None:
+        called = self._run_fullimage(tmp_path, "--style", "Candy")
+        assert called == ["Candy"]
+
+    def test_style_filter_case_insensitive(self, tmp_path: Path) -> None:
+        called = self._run_fullimage(tmp_path, "--style", "MOSAIC")
+        assert called == ["Mosaic"]
+
+    def test_unknown_style_aborts_before_inference(self, tmp_path: Path) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            self._run_fullimage(tmp_path, "--style", "NoSuchStyle")
+        assert exc_info.value.code is not None
+
+    def test_pdfoverview_with_style_filter(self, tmp_path: Path) -> None:
+        """--style must also work with --pdfoverview mode."""
+        photo = self._setup_catalog(tmp_path)
+        called: list[str] = []
+
+        def _fake_pdf(
+            image_path: Path,
+            styles: list[dict],
+            **kw: object,
+        ) -> None:
+            called.extend(s["name"] for s in styles)
+
+        argv = ["batch_styler.py", "--pdfoverview", str(photo), "--style", "Udnie"]
+        with (
+            patch.object(bs, "REPO_ROOT", tmp_path),
+            patch.object(bs, "cmd_pdfoverview", side_effect=_fake_pdf),
+        ):
+            with patch("sys.argv", argv):
+                bs.main()
+
+        assert called == ["Udnie"]
+
+    def test_pdfoverview_without_filter_passes_all(self, tmp_path: Path) -> None:
+        photo = self._setup_catalog(tmp_path)
+        called: list[str] = []
+
+        def _fake_pdf(image_path: Path, styles: list[dict], **kw: object) -> None:
+            called.extend(s["name"] for s in styles)
+
+        argv = ["batch_styler.py", "--pdfoverview", str(photo)]
+        with (
+            patch.object(bs, "REPO_ROOT", tmp_path),
+            patch.object(bs, "cmd_pdfoverview", side_effect=_fake_pdf),
+        ):
+            with patch("sys.argv", argv):
+                bs.main()
+
+        assert called == ["Candy", "Mosaic", "Udnie"]

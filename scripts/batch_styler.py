@@ -12,10 +12,17 @@ Two modes (exactly one must be specified):
     Output: ``<stem>_<style_name>.jpg`` next to the source image.
     The original is not duplicated.
 
+Optional filter:
+
+``--style "MyStyle"``
+    Apply only the named style (case-insensitive).  Aborts with an error
+    message listing available styles if the name is not found in the catalog.
+
 Usage::
 
     python scripts/batch_styler.py --pdfoverview path/to/photo.jpg
     python scripts/batch_styler.py --fullimage   path/to/photo.jpg --strength 0.9
+    python scripts/batch_styler.py --fullimage   path/to/photo.jpg --style "Anime Hayao"
 """
 from __future__ import annotations
 
@@ -190,6 +197,38 @@ def _style_name_to_filename(style_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Style filtering
+# ---------------------------------------------------------------------------
+
+def filter_styles_by_name(
+    styles: list[dict],
+    style_name: str,
+) -> list[dict]:
+    """Return the subset of *styles* whose ``name`` matches *style_name* (case-insensitive).
+
+    Args:
+        styles:     Full list of style dicts from the catalog.
+        style_name: The requested style name (case-insensitive).
+
+    Returns:
+        A single-element list with the matching style dict.
+
+    Raises:
+        SystemExit: If no style with the given name is found, prints an error
+                    listing available names and exits with code 1.
+    """
+    needle = style_name.strip().casefold()
+    matches = [s for s in styles if s.get("name", "").casefold() == needle]
+    if not matches:
+        available = ", ".join(f"'{s.get('name', s['id'])}' " for s in styles)
+        sys.exit(
+            f"Error: style '{style_name}' not found in catalog.\n"
+            f"Available styles: {available}"
+        )
+    return matches
+
+
+# ---------------------------------------------------------------------------
 # Command: --pdfoverview
 # ---------------------------------------------------------------------------
 
@@ -286,6 +325,8 @@ Modes (exactly one required):
                  Output: <image-dir>/<stem>_<stylename>.jpg  (one per style)
 
 Options:
+  --style NAME   Apply only the named style (case-insensitive).
+                 Aborts with an error if the name is not in the catalog.
   --tile-size N  Tile size for ONNX inference in pixels (default: 1024)
   --overlap N    Tile overlap in pixels (default: 128)
   --strength F   Style blend strength 0.0-1.0 (default: 1.0)
@@ -294,6 +335,7 @@ Options:
 Examples:
   batch_styler.ps1 -pdfoverview photos\portrait.jpg
   batch_styler.ps1 -fullimage   photos\portrait.jpg --strength 0.85
+  batch_styler.ps1 -fullimage   photos\portrait.jpg --style "Anime Hayao"
 """
 
 
@@ -328,6 +370,10 @@ def main() -> None:
         "--float16", action="store_true", default=False,
         help="Use float16 inference (faster on GPU/DML)",
     )
+    parser.add_argument(
+        "--style", type=str, default=None, metavar="NAME",
+        help="Apply only this style (case-insensitive name). Aborts if not found.",
+    )
     args = parser.parse_args()
 
     if not args.pdfoverview and not args.fullimage:
@@ -349,8 +395,11 @@ def main() -> None:
     if not styles:
         sys.exit("No styles found in catalog.")
 
+    if args.style:
+        styles = filter_styles_by_name(styles, args.style)
+
     print(f"Source image : {image_path}")
-    print(f"Styles found : {len(styles)}")
+    print(f"Styles       : {len(styles)} style(s)" + (f" (filtered: '{args.style}')" if args.style else ""))
     print(f"Tile size    : {args.tile_size} px  overlap: {args.overlap} px")
     print()
 
