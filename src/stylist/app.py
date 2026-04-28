@@ -66,7 +66,7 @@ def _setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
-    fh = logging.FileHandler(_LOG_PATH, encoding="utf-8")
+    fh = logging.FileHandler(_LOG_PATH, mode="w", encoding="utf-8")
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(fmt)
 
