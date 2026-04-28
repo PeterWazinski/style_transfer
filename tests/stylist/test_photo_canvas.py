@@ -268,17 +268,28 @@ class TestResetStyled:
         assert len(strength_received) == 1, "Slider must emit reapply_strength_requested"
         assert strength_received[0][0] == "candy"
 
-    def test_slider_auto_apply_fires_apply_without_styled_result(
+    def test_slider_does_not_apply_without_styled_result(
         self, qtbot, canvas: PhotoCanvasView
     ) -> None:
-        """Without a styled result, releasing the slider must emit apply_requested."""
+        """Without a styled result, releasing the slider must NOT emit any signal.
+
+        The strength value is simply stored; the user must click Apply to trigger
+        the initial style transfer.  This prevents spurious Apply-Error dialogs when
+        models have been unloaded (e.g. after a Reset) but _current_style_id is
+        still set from a previous session.
+        """
         canvas.set_original(_make_pixmap())
         canvas.set_active_style("candy")
 
-        received: list[tuple] = []
-        canvas.apply_requested.connect(lambda sid, s: received.append((sid, s)))
+        apply_received: list[tuple] = []
+        reapply_received: list[tuple] = []
+        strength_received: list[tuple] = []
+        canvas.apply_requested.connect(lambda sid, s: apply_received.append((sid, s)))
+        canvas.reapply_requested.connect(lambda sid, s: reapply_received.append((sid, s)))
+        canvas.reapply_strength_requested.connect(lambda sid, s: strength_received.append((sid, s)))
 
         canvas.strength_slider.released.emit()
 
-        assert len(received) == 1
-        assert received[0][0] == "candy"
+        assert apply_received == [], "Slider must NOT emit apply_requested when no styled result"
+        assert reapply_received == [], "Slider must NOT emit reapply_requested"
+        assert strength_received == [], "Slider must NOT emit reapply_strength_requested"

@@ -299,12 +299,13 @@ class PhotoCanvasView(QWidget):
             )
 
     def _on_strength_released(self) -> None:
-        """Auto-apply when slider is released.
+        """Re-apply the current style with the new strength when the slider is released.
 
-        - No styled result yet  → Apply (original photo as input).
-        - Styled result exists  → emit ``reapply_strength_requested`` so MainWindow
-          re-runs the *same input step* with the new strength without advancing the
-          chain (left pane is preserved).
+        Only fires when a styled result already exists (``_has_styled`` is True).
+        Emits ``reapply_strength_requested`` so MainWindow re-runs the *same input
+        step* with the new strength without advancing the chain (left pane is
+        preserved).  If no styled result exists yet the slider value is simply
+        stored for use when the user clicks Apply.
         """
         if not self._has_original or not self._current_style_id:
             return
@@ -313,5 +314,3 @@ class PhotoCanvasView(QWidget):
                 self._current_style_id,
                 self.strength_slider.strength(),
             )
-        else:
-            self._on_apply_clicked()
