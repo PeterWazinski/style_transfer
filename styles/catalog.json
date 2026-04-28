@@ -111,6 +111,16 @@
       "preview_path": "styles/akira_manga/preview.jpg",
       "is_builtin": false,
       "tensor_layout": "nchw"
+    },
+    {
+      "id": "hundertwasserworks",
+      "name": "HundertwasserWorks",
+      "description": "",
+      "author": "PeterWazinski",
+      "model_path": "styles/hundertwasserworks/model.onnx",
+      "preview_path": "styles/hundertwasserworks/preview.jpg",
+      "is_builtin": false,
+      "tensor_layout": "nchw"
     }
   ]
 }
