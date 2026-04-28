@@ -27,13 +27,16 @@ def _project_root() -> Path:
     """Return the data root directory.
 
     * When running from source: the repo root (two levels above this file).
-    * When running as a PyInstaller one-directory bundle: ``sys._MEIPASS``,
-      which in onedir mode equals the folder containing the exe.  The
-      ``styles\\`` directory sits alongside the exe and is therefore found
-      at ``_project_root() / 'styles'`` without any path changes.
+    * When running as a PyInstaller one-directory bundle: the folder
+      containing the exe (``Path(sys.executable).parent``).  PyInstaller 6+
+      places all internal DLLs/modules in an ``_internal\\`` sub-directory
+      and sets ``sys._MEIPASS`` to point there, so ``_MEIPASS`` must NOT be
+      used for locating user-editable data (styles, catalog).  Using
+      ``sys.executable``'s parent is consistent with ``_log_path()`` and
+      keeps ``styles\\`` editable alongside the exe.
     """
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
     return Path(__file__).resolve().parent.parent.parent
 
 
