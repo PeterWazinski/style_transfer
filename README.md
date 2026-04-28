@@ -47,6 +47,33 @@ Requires PyInstaller in the venv (`pip install pyinstaller`). torch/torchvision 
 
 ---
 
+## Batch Styler
+
+Apply every installed style to a single photo in one command.
+
+```powershell
+# PDF contact sheet — one page per style, low-res previews
+.\scripts\batch_styler.ps1 -pdfoverview photos\photo.jpg
+
+# Full-resolution per-style JPEGs — one file per style in a dated output folder
+.\scripts\batch_styler.ps1 -fullimage photos\photo.jpg
+
+# From cmd.exe
+powershell -ExecutionPolicy RemoteSigned -File scripts\batch_styler.ps1 -pdfoverview photos\photo.jpg
+
+# Optional flags — work with both modes
+.\scripts\batch_styler.ps1 -fullimage photos\photo.jpg -Strength 0.85 -TileSize 512
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-pdfoverview` | — | Generate a PDF contact sheet |
+| `-fullimage` | — | Generate full-resolution JPEGs |
+| `-Strength` | `1.0` | Style blend (0.0 = original, 1.0 = full style) |
+| `-TileSize` | `256` | Tile size in pixels for tiled inference |
+
+---
+
 ## Train a New Style
 
 Training requires a GPU. The easiest free option is Kaggle (30 h/week GPU T4):
