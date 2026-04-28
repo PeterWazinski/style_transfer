@@ -101,6 +101,16 @@
       "preview_path": "styles/tintin/preview.jpg",
       "is_builtin": false,
       "tensor_layout": "nchw"
+    },
+    {
+      "id": "akira_manga",
+      "name": "Akira Manga",
+      "description": "Akira",
+      "author": "PeterWazinski",
+      "model_path": "styles/akira_manga/model.onnx",
+      "preview_path": "styles/akira_manga/preview.jpg",
+      "is_builtin": false,
+      "tensor_layout": "nchw"
     }
   ]
 }
