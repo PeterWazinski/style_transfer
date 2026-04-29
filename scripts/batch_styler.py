@@ -130,6 +130,8 @@ def _make_page(
     draw = ImageDraw.Draw(page)
 
     for idx, (style_name, img) in enumerate(cells):
+        if img is None:
+            continue  # empty cell (e.g. placeholder columns after the original)
         row = idx // COLS
         col = idx % COLS
         x0 = MARGIN + col * (CELL_W + GAP)
@@ -278,19 +280,30 @@ def cmd_pdfoverview(
 ) -> None:
     """Apply all styles at each PDF_STRENGTHS level and write a DIN-A4-landscape PDF.
 
-    Each style produces ``len(PDF_STRENGTHS)`` consecutive cells labelled
-    ``"Style Name (100%)"``, ``"Style Name (150%)"`` etc.  Inference runs exactly
-    once per style; the extra strength variants are derived by pixel-level
-    blending, so processing time is the same as the single-strength version.
+    Layout (3 columns × 2 rows per page):
+    - Page 1, row 1: original image in col 1 only; cols 2 and 3 are left blank.
+    - From row 2 onward: each style occupies exactly one row with
+      len(PDF_STRENGTHS) cells labelled ``"Style (100%)"`` / ``"(150%)"`` etc.
+    - Styles are ordered alphabetically (case-insensitive).
+
+    Inference runs once per style; the extra strength variants are derived by
+    pixel-level blending at no additional compute cost.
     """
     source = Image.open(image_path).convert("RGB")
     engine = StyleTransferEngine()
 
-    # Build cell list: original first, then per-style groups of len(PDF_STRENGTHS)
-    cells: list[tuple[str, Image.Image]] = [("Original", source.copy())]
+    # Sort styles alphabetically by display name
+    styles_sorted = sorted(styles, key=lambda s: s.get("name", s["id"]).casefold())
+
+    # Row 1: original in col 1, cols 2 and 3 intentionally blank
+    cells: list[tuple[str, Image.Image | None]] = [
+        ("Original", source.copy()),
+        ("", None),
+        ("", None),
+    ]
     n_applied: int = 0
 
-    for style in styles:
+    for style in styles_sorted:
         style_id:   str  = style["id"]
         style_name: str  = style.get("name", style_id)
         model_path: Path = REPO_ROOT / style["model_path"]

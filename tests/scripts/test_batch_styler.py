@@ -239,7 +239,7 @@ class TestMainIntegration:
         assert pdf_path.read_bytes()[:4] == b"%PDF"
 
     def test_pdf_has_two_pages_for_seven_styles(self, tmp_path: Path) -> None:
-        """7 styles × 3 strengths + 1 original = 22 cells → 4 pages (6+6+6+4)."""
+        """7 styles × 3 strengths + original row (3 cells, 2 blank) = 24 cells → 4 pages."""
         n_styles = 7
         styles_dir = tmp_path / "styles"
         styles_dir.mkdir()
