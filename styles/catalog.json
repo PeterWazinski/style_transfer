@@ -121,6 +121,46 @@
       "preview_path": "styles/hundertwasserworks/preview.jpg",
       "is_builtin": false,
       "tensor_layout": "nchw"
+    },
+    {
+      "id": "style_monet",
+      "name": "Monet",
+      "description": "Impressionist painting style — Claude Monet",
+      "author": "junyanz/CycleGAN (MIT License)",
+      "model_path": "styles/style_monet/model.onnx",
+      "preview_path": "styles/style_monet/preview.jpg",
+      "tensor_layout": "nchw_tanh",
+      "is_builtin": true
+    },
+    {
+      "id": "style_vangogh",
+      "name": "Van Gogh",
+      "description": "Post-impressionist style — Vincent van Gogh",
+      "author": "junyanz/CycleGAN (MIT License)",
+      "model_path": "styles/style_vangogh/model.onnx",
+      "preview_path": "styles/style_vangogh/preview.jpg",
+      "tensor_layout": "nchw_tanh",
+      "is_builtin": true
+    },
+    {
+      "id": "style_cezanne",
+      "name": "Cézanne",
+      "description": "Post-impressionist style — Paul Cézanne",
+      "author": "junyanz/CycleGAN (MIT License)",
+      "model_path": "styles/style_cezanne/model.onnx",
+      "preview_path": "styles/style_cezanne/preview.jpg",
+      "tensor_layout": "nchw_tanh",
+      "is_builtin": true
+    },
+    {
+      "id": "style_ukiyoe",
+      "name": "Ukiyo-e",
+      "description": "Japanese woodblock print style",
+      "author": "junyanz/CycleGAN (MIT License)",
+      "model_path": "styles/style_ukiyoe/model.onnx",
+      "preview_path": "styles/style_ukiyoe/preview.jpg",
+      "tensor_layout": "nchw_tanh",
+      "is_builtin": true
     }
   ]
 }
