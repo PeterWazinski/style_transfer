@@ -1,6 +1,6 @@
 # CycleGAN Pre-trained Model Implementation Plan
 
-**Status:** Draft — for review before implementation  
+**Status:** Complete — all phases implemented and tested (Phase 5 recompile pending)  
 **Scope:** Monet, Van Gogh, Cézanne, Ukiyo-e (4 styles, ~44 MB total)
 
 ---
@@ -53,28 +53,32 @@ and the catalog JSON.
 
 ## 3. Implementation phases
 
-### Phase 1 — ONNX export (Kaggle, ~30 min one-time effort) ✅ READY
+### Phase 1 — ONNX export (Kaggle, ~30 min one-time effort) ✅ DONE
 
-**Notebook created:** `scripts/export_cyclegan_to_onnx.ipynb`  
-Upload this file to a Kaggle notebook (GPU T4 × 1) and run all cells.
+**Notebook:** `scripts/export_cyclegan_to_onnx.ipynb` (run on Kaggle T4 GPU)
 
 The notebook:
 
 1. Downloads each `.pth` from the Berkeley server (with HuggingFace fallback)
 2. Loads the `ResnetGenerator` (self-contained, no CycleGAN repo clone needed)
-3. Exports to ONNX with dynamic H/W axes, opset 17
+3. Exports to ONNX with dynamic H/W axes, **opset 13** (opset 17 was changed to 13 to avoid
+   a `Pad` version-conversion bug in `onnxscript`, and `dynamo=False` was set to force
+   the TorchScript exporter which correctly embeds weights; opset 17 triggered the dynamo
+   exporter and produced a 0.2 MB skeleton instead of the correct ~44 MB file)
 4. Validates output shape and `[-1, 1]` range with ONNX Runtime
 5. Runs a visual spot-check on a synthetic image
 
-After all cells complete, download the four `.onnx` files from the Kaggle output
-panel and proceed to Phase 3.
+All four `.onnx` files (43.5 MB each) downloaded and installed in `styles/`.
 
-> **Note on the code snippet below:** shown for reference only.
-> The actual runnable version is in `scripts/export_cyclegan_to_onnx.ipynb`.
+> **Bugs fixed during export (all committed):**
+> - `ModuleNotFoundError: onnxruntime` — added install cell before imports
+> - `ModuleNotFoundError: onnxscript` — added to same install cell
+> - `strict=True` rejected InstanceNorm running-stats buffers — changed to `strict=False`
+> - `dynamo` exporter produced 0.2 MB skeleton — switched to `opset 13` + `dynamo=False`
 
 ---
 
-### Phase 2 — Engine: add `nchw_tanh` layout (~20 lines in `engine.py`)
+### Phase 2 — Engine: add `nchw_tanh` layout ✅ DONE (commit `0803996`)
 
 Add a new private method alongside the existing `_infer_tile_nhwc_tanh()`:
 
@@ -123,7 +127,7 @@ if tensor_layout == "nchw_tanh":                  # ← new dispatch
 
 ---
 
-### Phase 3 — Install the four styles
+### Phase 3 — Install the four styles ✅ DONE (commits `a21bc82`, `0b956ff`)
 
 Use `add_GAN_style.ipynb` (the new GAN-specific notebook) for each model, or drop files
 manually:
@@ -156,7 +160,16 @@ Repeat for `style_vangogh`, `style_cezanne`, `style_ukiyoe`.
 
 ---
 
-### Phase 4 — Tests
+### Phase 4 — Tests ✅ DONE (commits `0803996`, `3adead1`)
+
+Implemented in `tests/core/test_engine_nchw_tanh.py` (7 tests) and
+`tests/scripts/test_batch_styler.py` (`TestApplyAllStylesTensorLayout`).
+
+**Additional fix:** `generate_preview()` in `src/trainer/preview.py` was missing a
+`nchw_tanh` branch — it fell through to the `nchw` branch, which skipped
+normalisation and produced all-black thumbnails.  Fixed with an explicit
+`elif tensor_layout == "nchw_tanh"` branch and 4 new tests in
+`tests/trainer/test_preview.py`.
 
 Add unit tests in `tests/core/test_engine_nchw_tanh.py`:
 
@@ -175,11 +188,20 @@ Add integration entries in `tests/scripts/test_batch_styler.py`:
 
 ---
 
-### Phase 5 — Recompile
+### Phase 5 — Recompile ⏳ PENDING
 
 Run `.\compile.ps1` to produce updated `dist\PetersPictureStyler\` with the
 four new style folders included.  No changes to `style_transfer.spec` needed —
 the COLLECT step already picks up everything under `styles\`.
+
+---
+
+## 3b. Unplanned changes implemented during this work
+
+| Change | Commit | Reason |
+|--------|--------|--------|
+| `generate_preview()` `nchw_tanh` branch | `3adead1` | Missing branch produced black preview thumbnails |
+| Strength slider extended to 300% with extrapolation | `5c02358` | CycleGAN styles were too subtle at 100%; `strength > 1.0` now extrapolates the style delta beyond the model's native output |
 
 ---
 
