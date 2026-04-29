@@ -174,6 +174,8 @@ class StyleTransferEngine:
         """
         if tensor_layout == "nhwc_tanh":
             return self._infer_tile_nhwc_tanh(session, tile)
+        if tensor_layout == "nchw_tanh":
+            return self._infer_tile_nchw_tanh(session, tile, use_float16=use_float16)
         try:
             arr = np.array(tile.convert("RGB"), dtype=np.float32)
             # Shape: [1, 3, H, W]
@@ -254,6 +256,48 @@ class StyleTransferEngine:
         result = Image.fromarray(result_arr)
         if result.size != (orig_w, orig_h):
             result = result.resize((orig_w, orig_h), Image.BILINEAR)
+        return result
+
+    def _infer_tile_nchw_tanh(
+        self,
+        session: "ort.InferenceSession",
+        tile: Image.Image,
+        *,
+        use_float16: bool = False,
+    ) -> Image.Image:
+        """Inference for NCHW models with tanh-normalised I/O (e.g. CycleGAN).
+
+        Input : [1, 3, H, W]  float32  range [-1, 1]
+        Output: [1, 3, H, W]  float32  range [-1, 1]
+        """
+        try:
+            arr = np.array(tile.convert("RGB"), dtype=np.float32)
+            arr = arr / 127.5 - 1.0                           # [0, 255] → [-1, 1]
+            tensor: np.ndarray = arr.transpose(2, 0, 1)[np.newaxis, ...]  # → [1, 3, H, W]
+            if use_float16:
+                tensor = tensor.astype(np.float16)
+            input_name: str = session.get_inputs()[0].name
+            output: list[np.ndarray] = session.run(None, {input_name: tensor})
+        except MemoryError as exc:
+            raise OOMError(
+                f"Out of memory processing a tile of size {tile.size}. "
+                "Try reducing tile_size in Settings."
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            _msg = str(exc).lower()
+            if any(k in _msg for k in ("out of memory", "insufficient", "oom", ": 6 :", "error code: 6")):
+                raise OOMError(
+                    f"GPU/DirectML out of memory processing a tile of size {tile.size}. "
+                    "Open a new photo or reduce tile_size in Settings to free memory."
+                ) from exc
+            raise
+        # De-normalise from [-1, 1] to [0, 255]; output is [1, 3, H, W]
+        result_arr = np.clip(
+            (output[0][0].transpose(1, 2, 0) + 1.0) / 2.0 * 255.0, 0, 255
+        ).astype(np.uint8)
+        result = Image.fromarray(result_arr)
+        if result.size != tile.size:
+            result = result.crop((0, 0, tile.width, tile.height))
         return result
 
     # ------------------------------------------------------------------

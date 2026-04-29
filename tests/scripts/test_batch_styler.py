@@ -599,3 +599,40 @@ class TestApplyAllStylesTensorLayout:
 
         _, call_kwargs = mock_engine.load_model.call_args
         assert call_kwargs.get('tensor_layout') == 'nchw'
+
+    def test_nchw_tanh_layout_forwarded_to_load_model(self, tmp_path: Path) -> None:
+        """If a style has tensor_layout=nchw_tanh in the catalog, load_model
+        must be called with tensor_layout='nchw_tanh' (CycleGAN regression test).
+        """
+        onnx = tmp_path / 'model.onnx'
+        onnx.write_bytes(b'fake')
+
+        styles = [
+            {
+                'id': 'style_monet',
+                'name': 'Monet',
+                'model_path': str(onnx),
+                'tensor_layout': 'nchw_tanh',
+            }
+        ]
+
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((100, 100, 100), size=32)
+        mock_engine._sessions = {}
+
+        with patch('batch_styler.StyleTransferEngine', return_value=mock_engine):
+            with patch('batch_styler.REPO_ROOT', tmp_path):
+                bs._apply_all_styles(
+                    source=_solid((50, 50, 50), size=32),
+                    styles=styles,
+                    tile_size=256,
+                    overlap=64,
+                    strength=1.0,
+                    use_float16=False,
+                )
+
+        mock_engine.load_model.assert_called_once()
+        _, call_kwargs = mock_engine.load_model.call_args
+        assert call_kwargs.get('tensor_layout') == 'nchw_tanh', (
+            "load_model must pass tensor_layout='nchw_tanh' for CycleGAN models"
+        )

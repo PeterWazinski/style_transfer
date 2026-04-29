@@ -77,6 +77,35 @@ def make_mock_session_nhwc(
     return session
 
 
+def make_mock_session_nchw_tanh(
+    output_colour: tuple[int, int, int] = (128, 64, 192),
+) -> MagicMock:
+    """Return a mock ``ort.InferenceSession`` that mimics CycleGAN-style NCHW models.
+
+    Expects input ``[1, 3, H, W]`` float32 in ``[-1, 1]`` and returns the same
+    shape with the requested solid colour de-normalised to ``[-1, 1]``.
+    """
+    session = MagicMock()
+    inp = MagicMock()
+    inp.name = "input"
+    session.get_inputs.return_value = [inp]
+
+    def _run(
+        output_names: list[str], feed: dict[str, np.ndarray]
+    ) -> list[np.ndarray]:
+        tensor = feed["input"]  # [1, 3, H, W]
+        h, w = tensor.shape[2], tensor.shape[3]
+        # Build solid-colour output in [-1, 1] range, NCHW layout
+        out = np.full((1, 3, h, w), 0.0, dtype=np.float32)
+        out[0, 0, :, :] = output_colour[0] / 127.5 - 1.0
+        out[0, 1, :, :] = output_colour[1] / 127.5 - 1.0
+        out[0, 2, :, :] = output_colour[2] / 127.5 - 1.0
+        return [out]
+
+    session.run.side_effect = _run
+    return session
+
+
 def save_jpeg(path: Path, size: tuple[int, int] = (64, 64)) -> Path:
     """Write a random RGB JPEG to *path* and return *path*.
 
