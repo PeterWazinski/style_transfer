@@ -166,9 +166,10 @@ def _apply_all_styles(
             print(f"  Skipping '{style_name}' — model not found: {model_path}")
             continue
 
+        tensor_layout: str = style.get("tensor_layout", "nchw")
         print(f"Processing style '{style_name}' ...", flush=True)
         try:
-            engine.load_model(style_id, model_path)
+            engine.load_model(style_id, model_path, tensor_layout=tensor_layout)
             result = engine.apply(
                 source,
                 style_id,
