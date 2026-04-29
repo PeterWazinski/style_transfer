@@ -52,6 +52,13 @@ def generate_preview(
         out_raw = sess.run(None, {sess.get_inputs()[0].name: arr})[0]
         out: np.ndarray = np.asarray(out_raw)
         out = np.clip((out[0] + 1.0) / 2.0 * 255.0, 0, 255).astype(np.uint8)  # HWC
+    elif tensor_layout == "nchw_tanh":
+        # NCHW [1, 3, H, W], range [-1, 1]  (CycleGAN / PyTorch models)
+        arr = np.array(img, dtype=np.float32).transpose(2, 0, 1)[np.newaxis]  # 1CHW
+        arr = arr / 127.5 - 1.0
+        out_raw = sess.run(None, {sess.get_inputs()[0].name: arr})[0]
+        out = np.asarray(out_raw)
+        out = np.clip((out[0].transpose(1, 2, 0) + 1.0) / 2.0 * 255.0, 0, 255).astype(np.uint8)  # HWC
     else:
         # NCHW [1, 3, H, W], range [0, 255]  (NST TransformerNet)
         arr = np.array(img, dtype=np.float32).transpose(2, 0, 1)[np.newaxis]  # 1CHW

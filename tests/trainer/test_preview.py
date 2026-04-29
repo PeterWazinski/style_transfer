@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from tests.helpers import make_mock_session, make_mock_session_nhwc
+from tests.helpers import make_mock_session, make_mock_session_nhwc, make_mock_session_nchw_tanh
 
 
 # ---------------------------------------------------------------------------
@@ -275,3 +275,97 @@ def test_nhwc_result_is_rgb_image(tmp_path: Path, fake_onnx: Path, content_image
 
     img = Image.open(str(preview_path))
     assert img.mode == "RGB"
+
+
+# ---------------------------------------------------------------------------
+# NCHW tanh layout (CycleGAN)
+# ---------------------------------------------------------------------------
+
+def test_nchw_tanh_creates_jpeg(tmp_path: Path, fake_onnx: Path, content_image: Path) -> None:
+    from src.trainer.preview import generate_preview
+
+    preview_path = tmp_path / "preview.jpg"
+    sess = make_mock_session_nchw_tanh(output_colour=(100, 150, 200))
+
+    with patch("onnxruntime.InferenceSession", return_value=sess):
+        generate_preview(
+            onnx_path=fake_onnx,
+            preview_path=preview_path,
+            content_image=content_image,
+            size=64,
+            tensor_layout="nchw_tanh",
+        )
+
+    assert preview_path.exists()
+
+
+def test_nchw_tanh_output_size(tmp_path: Path, fake_onnx: Path, content_image: Path) -> None:
+    from src.trainer.preview import generate_preview
+
+    preview_path = tmp_path / "preview.jpg"
+    sess = make_mock_session_nchw_tanh()
+
+    with patch("onnxruntime.InferenceSession", return_value=sess):
+        generate_preview(
+            onnx_path=fake_onnx,
+            preview_path=preview_path,
+            content_image=content_image,
+            size=64,
+            tensor_layout="nchw_tanh",
+        )
+
+    assert Image.open(str(preview_path)).size == (64, 64)
+
+
+def test_nchw_tanh_colour_correct(tmp_path: Path, fake_onnx: Path, content_image: Path) -> None:
+    """De-normalisation must produce correct [0, 255] colours from [-1, 1] output."""
+    from src.trainer.preview import generate_preview
+
+    preview_path = tmp_path / "preview.jpg"
+    colour = (100, 150, 200)
+    sess = make_mock_session_nchw_tanh(output_colour=colour)
+
+    with patch("onnxruntime.InferenceSession", return_value=sess):
+        generate_preview(
+            onnx_path=fake_onnx,
+            preview_path=preview_path,
+            content_image=content_image,
+            size=64,
+            tensor_layout="nchw_tanh",
+        )
+
+    arr = np.array(Image.open(str(preview_path)))
+    assert abs(int(arr[0, 0, 0]) - colour[0]) <= 5
+    assert abs(int(arr[0, 0, 1]) - colour[1]) <= 5
+    assert abs(int(arr[0, 0, 2]) - colour[2]) <= 5
+
+
+def test_nchw_tanh_input_range_is_tanh(tmp_path: Path, fake_onnx: Path, content_image: Path) -> None:
+    """Input tensor must be normalised to [-1, 1]."""
+    from src.trainer.preview import generate_preview
+
+    preview_path = tmp_path / "preview.jpg"
+    sess = make_mock_session_nchw_tanh()
+    captured: list[np.ndarray] = []
+
+    original_run = sess.run.side_effect
+
+    def _capture(output_names, feed):
+        captured.append(feed["input"])
+        return original_run(output_names, feed)
+
+    sess.run.side_effect = _capture
+
+    with patch("onnxruntime.InferenceSession", return_value=sess):
+        generate_preview(
+            onnx_path=fake_onnx,
+            preview_path=preview_path,
+            content_image=content_image,
+            size=64,
+            tensor_layout="nchw_tanh",
+        )
+
+    arr = captured[0]
+    assert arr.shape == (1, 3, 64, 64)
+    assert arr.min() >= -1.0 - 1e-5
+    assert arr.max() <= 1.0 + 1e-5
