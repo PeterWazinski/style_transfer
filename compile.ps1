@@ -68,7 +68,18 @@ Write-Host "`n=== Building PetersPictureStyler\ (this takes a few minutes) ===" 
 & $VenvPy -m PyInstaller $SpecFile --noconfirm
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
 
-# ── 4. Copy styles\ into the output directory ────────────────────────────
+# ── 4. Remove stray EXE stubs that PyInstaller drops directly in dist\ ───
+#    PyInstaller creates intermediate single-file stubs in dist\ as part of
+#    the onedir COLLECT step.  They are not the final deliverable.
+Write-Host "`n=== Removing intermediate EXE stubs from dist\ ===" -ForegroundColor Cyan
+foreach ($stub in @("$Root\dist\PetersPictureStylist.exe", "$Root\dist\BatchStyler.exe")) {
+    if (Test-Path $stub) {
+        Remove-Item -Force $stub
+        Write-Host "  Removed: $stub"
+    }
+}
+
+# ── 5. Copy styles\ into the output directory ────────────────────────────
 Write-Host "`n=== Copying styles\ into output directory ===" -ForegroundColor Cyan
 $SrcStyles = "$Root\styles"
 $DstStyles = "$OutputDir\styles"
@@ -77,7 +88,7 @@ Copy-Item -Recurse $SrcStyles $DstStyles
 $StyleCount = (Get-ChildItem $DstStyles -Directory).Count
 Write-Host "  Copied $StyleCount style folder(s) to $DstStyles"
 
-# ── 5. Report result ─────────────────────────────────────────────────────
+# ── 6. Report result ─────────────────────────────────────────────────────
 if (Test-Path $OutputExe) {
     $ExeMB   = [math]::Round((Get-Item $OutputExe).Length / 1MB, 1)
     $BatchMB = if (Test-Path $BatchExe) { [math]::Round((Get-Item $BatchExe).Length / 1MB, 1) } else { "?" }
