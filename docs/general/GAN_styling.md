@@ -125,7 +125,9 @@ and photos are structurally incomparable — you can't create ground-truth pairs
 **Training time:**
 - 200 epochs on a single GPU (RTX 3080): ~12–24 hours
 - On CPU only: not practical for full training (weeks)
-- On Kaggle free GPU (T4, 30 h/week): feasible in 2–3 Kaggle sessions
+- On Kaggle free GPU (T4): ~18–27 hours total — 2–3 sessions of up to 9 h each
+  (Kaggle caps each notebook run at 9 h; the free tier gives 30 h/week, so this
+  fits within a single week's quota)
 
 **Output model size:** Generator is typically ~11 MB (ResNet-9 blocks backbone).
 Exportable to ONNX.
@@ -268,7 +270,7 @@ support for SD on Arc is still maturing and inference would be slow.
 | Task | Hardware | Estimated time |
 |---|---|---|
 | Fine-tune TransformerNet (current CNN) | CPU (this laptop) | 4–8 hours |
-| CycleGAN on custom artist | Kaggle T4 GPU | 3–4 Kaggle sessions (30 h free/week) |
+| CycleGAN on custom artist | Kaggle T4 GPU | ~27–36 h total — 3–4 sessions × 9 h (fits in one week's 30 h free quota) |
 | CycleGAN on custom artist | This laptop CPU | ~2–4 weeks — not practical |
 | SD LoRA fine-tune | Kaggle T4 GPU | 1–2 hours |
 | SD LoRA fine-tune | This laptop | Not practical |
