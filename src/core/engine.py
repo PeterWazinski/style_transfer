@@ -323,8 +323,9 @@ class StyleTransferEngine:
         Args:
             content_image:     Source PIL image (JPEG/PNG, any resolution).
             style_id:          ID of a previously loaded model.
-            strength:          Blend factor in [0.0, 1.0].
-                               0 = original, 1 = fully styled.
+            strength:          Blend/extrapolation factor in [0.0, 3.0].
+                               0 = original, 1 = fully styled,
+                               >1 = extrapolated (amplified style effect).
             tile_size:         Tile dimension in pixels (default 1024).
             overlap:           Overlap border in pixels (default 128).
             use_float16:       Cast input tiles to float16 (faster on GPU).
@@ -335,14 +336,14 @@ class StyleTransferEngine:
 
         Raises:
             KeyError:              If *style_id* was not loaded.
-            ValueError:            If *strength* is outside [0.0, 1.0].
+            ValueError:            If *strength* is outside [0.0, 3.0].
         """
         if style_id not in self._sessions:
             raise KeyError(
                 f"Style '{style_id}' is not loaded. Call load_model() first."
             )
-        if not 0.0 <= strength <= 1.0:
-            raise ValueError(f"strength must be in [0.0, 1.0], got {strength}")
+        if not 0.0 <= strength <= 3.0:
+            raise ValueError(f"strength must be in [0.0, 3.0], got {strength}")
 
         session = self._sessions[style_id]
         tensor_layout: str = self._model_meta.get(style_id, "nchw")
@@ -364,14 +365,22 @@ class StyleTransferEngine:
 
         styled_full = merge_tiles(styled_tiles, original_size)
 
-        if strength >= 1.0:
+        if strength == 1.0:
             return styled_full
         if strength <= 0.0:
             return content_image.copy()
 
-        # Blend: result = α × styled + (1-α) × original
         content_rgb = content_image.convert("RGB").resize(original_size)
-        return Image.blend(content_rgb, styled_full, alpha=strength)
+        if strength < 1.0:
+            # Blend: result = α × styled + (1-α) × original
+            return Image.blend(content_rgb, styled_full, alpha=strength)
+
+        # Extrapolate: result = original + α × (styled - original)  [α > 1]
+        # Pushes style effect beyond the model's native output.
+        arr_orig = np.array(content_rgb, dtype=np.float32)
+        arr_styled = np.array(styled_full, dtype=np.float32)
+        arr_result = np.clip(arr_orig + strength * (arr_styled - arr_orig), 0, 255).astype(np.uint8)
+        return Image.fromarray(arr_result)
 
     def preview(
         self,

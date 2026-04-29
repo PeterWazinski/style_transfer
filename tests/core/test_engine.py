@@ -76,9 +76,22 @@ def test_apply_invalid_strength_raises() -> None:
     engine = _engine_with_style()
     img = Image.new("RGB", (64, 64))
     with pytest.raises(ValueError, match="strength"):
-        engine.apply(img, "candy", strength=1.5)
+        engine.apply(img, "candy", strength=3.1)
     with pytest.raises(ValueError, match="strength"):
         engine.apply(img, "candy", strength=-0.1)
+
+
+def test_apply_strength_above_one_extrapolates() -> None:
+    """strength > 1.0 must push the result further from the original than strength=1.0."""
+    # styled is solid green (0, 255, 0), original is solid red (255, 0, 0)
+    engine = _engine_with_style(output_colour=(0, 255, 0))
+    img = Image.new("RGB", (64, 64), color=(255, 0, 0))
+    result = engine.apply(img, "candy", strength=1.5, tile_size=128, overlap=16)
+    arr = np.array(result)
+    # Red channel: original=255, styled=0 → extrapolated should be < 0, clipped to 0
+    assert arr[:, :, 0].mean() < 5
+    # Green channel: original=0, styled=255 → extrapolated = 0 + 1.5*(255-0) = 382, clipped to 255
+    assert arr[:, :, 1].mean() > 250
 
 
 # ---------------------------------------------------------------------------
