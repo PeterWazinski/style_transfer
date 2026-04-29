@@ -73,11 +73,11 @@ class TestStrengthSlider:
         canvas.strength_slider.set_strength(-0.5)
         assert canvas.strength_slider.strength() == pytest.approx(0.0)
 
-    def test_strength_slider_clamps_above_one(
+    def test_strength_slider_clamps_above_three(
         self, canvas: PhotoCanvasView
     ) -> None:
-        canvas.strength_slider.set_strength(1.5)
-        assert canvas.strength_slider.strength() == pytest.approx(1.0)
+        canvas.strength_slider.set_strength(3.5)
+        assert canvas.strength_slider.strength() == pytest.approx(3.0)
 
 
 # ---------------------------------------------------------------------------
