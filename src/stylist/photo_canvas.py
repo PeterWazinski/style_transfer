@@ -236,6 +236,7 @@ class PhotoCanvasView(QWidget):
         """Display *pixmap* as the original (left) layer."""
         self.split_view.set_original_pixmap(pixmap)
         self._has_original = True
+        self.strength_slider.set_strength(1.0)
         self.reset_button.setEnabled(True)
         self.apply_button.setEnabled(self._current_style_id is not None)
 

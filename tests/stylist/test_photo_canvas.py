@@ -79,6 +79,13 @@ class TestStrengthSlider:
         canvas.strength_slider.set_strength(3.5)
         assert canvas.strength_slider.strength() == pytest.approx(3.0)
 
+    def test_loading_new_photo_resets_slider_to_100_pct(
+        self, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.strength_slider.set_strength(2.0)
+        canvas.set_original(_make_pixmap())
+        assert canvas.strength_slider.strength() == pytest.approx(1.0)
+
 
 # ---------------------------------------------------------------------------
 # Split-view divider
