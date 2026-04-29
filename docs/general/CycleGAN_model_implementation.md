@@ -53,54 +53,24 @@ and the catalog JSON.
 
 ## 3. Implementation phases
 
-### Phase 1 — ONNX export (Kaggle, ~30 min one-time effort)
+### Phase 1 — ONNX export (Kaggle, ~30 min one-time effort) ✅ READY
 
-Create `scripts/export_cyclegan_to_onnx.ipynb` on Kaggle:
+**Notebook created:** `scripts/export_cyclegan_to_onnx.ipynb`  
+Upload this file to a Kaggle notebook (GPU T4 × 1) and run all cells.
 
-```python
-# Requirements: torch torchvision (already available on Kaggle)
-import torch, urllib.request
-from pathlib import Path
+The notebook:
 
-MODELS = ["style_monet", "style_vangogh", "style_cezanne", "style_ukiyoe"]
-BASE_URL = "http://efrosgans.eecs.berkeley.edu/cyclegan/pretrained_models/"
+1. Downloads each `.pth` from the Berkeley server (with HuggingFace fallback)
+2. Loads the `ResnetGenerator` (self-contained, no CycleGAN repo clone needed)
+3. Exports to ONNX with dynamic H/W axes, opset 17
+4. Validates output shape and `[-1, 1]` range with ONNX Runtime
+5. Runs a visual spot-check on a synthetic image
 
-# --- Minimal ResNet-9 generator (matches the official checkpoint) ----------
-# Only the Generator is needed for inference (not Discriminator).
-# Copy the ResnetGenerator class from the official repo's models/networks.py
-# (no external dependency — ~150 lines of pure PyTorch).
+After all cells complete, download the four `.onnx` files from the Kaggle output
+panel and proceed to Phase 3.
 
-def export_model(model_id: str) -> None:
-    pth_path = Path(f"{model_id}.pth")
-    urllib.request.urlretrieve(BASE_URL + pth_path.name, pth_path)
-
-    net = ResnetGenerator(input_nc=3, output_nc=3, ngf=64, n_blocks=9)
-    state = torch.load(pth_path, map_location="cpu")
-    net.load_state_dict(state)
-    net.eval()
-
-    dummy = torch.zeros(1, 3, 256, 256)
-    onnx_path = Path(f"{model_id}.onnx")
-    torch.onnx.export(
-        net, dummy, str(onnx_path),
-        input_names=["input"],
-        output_names=["output"],
-        dynamic_axes={"input": {2: "height", 3: "width"},
-                      "output": {2: "height", 3: "width"}},
-        opset_version=17,
-    )
-    print(f"Exported {onnx_path} ({onnx_path.stat().st_size // 1024} KB)")
-
-for m in MODELS:
-    export_model(m)
-```
-
-> **Note:** Copy `ResnetGenerator` verbatim from
-> `junyanz/pytorch-CycleGAN-and-pix2pix/models/networks.py` lines ~50–160.
-> No changes needed; the class is self-contained.
-
-After export, verify inference on one test image and download the four `.onnx`
-files (~11 MB each → ~44 MB total).
+> **Note on the code snippet below:** shown for reference only.
+> The actual runnable version is in `scripts/export_cyclegan_to_onnx.ipynb`.
 
 ---
 
