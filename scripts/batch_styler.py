@@ -4,7 +4,9 @@ Two modes (exactly one must be specified):
 
 ``--pdfoverview``
     Creates a DIN-A4 landscape PDF contact sheet (2 rows x 3 columns per page).
-    The original image appears in the top-left cell; all styles follow.
+    The original image appears in the top-left cell; every style then gets three
+    consecutive cells at strengths 100 %, 150 %, and 200 %.  Inference runs once
+    per style; the extra strength variants are derived by pixel-level blending.
     Output: ``<stem>_thumbnails.pdf`` next to the source image.
 
 ``--fullimage``
@@ -48,6 +50,8 @@ from src.core.engine import StyleTransferEngine  # noqa: E402
 
 logging.basicConfig(level=logging.WARNING)  # suppress engine INFO noise to stderr
 
+import numpy as np  # noqa: E402  (after sys.path setup)
+
 # ── PDF layout at 150 DPI (DIN A4 landscape = 297 × 210 mm) ─────────────────
 DPI: int = 150
 A4_W: int = int(297 / 25.4 * DPI)   # ≈ 1752 px
@@ -63,6 +67,9 @@ CELLS_PER_PAGE: int = COLS * ROWS
 CELL_W: int = (A4_W - 2 * MARGIN - (COLS - 1) * GAP) // COLS
 CELL_H: int = (A4_H - 2 * MARGIN - (ROWS - 1) * GAP) // ROWS
 IMG_H: int  = CELL_H - LABEL_H      # pixel height reserved for the thumbnail
+
+# Strength levels rendered per style in --pdfoverview mode
+PDF_STRENGTHS: list[float] = [1.0, 1.5, 2.0]
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +91,34 @@ def _fit_into(image: Image.Image, max_w: int, max_h: int) -> Image.Image:
     copy = image.copy()
     copy.thumbnail((max_w, max_h), Image.LANCZOS)
     return copy
+
+
+def _blend_to_strength(
+    original: Image.Image,
+    styled: Image.Image,
+    strength: float,
+) -> Image.Image:
+    """Re-apply a strength factor to a pre-computed fully-styled image.
+
+    Uses the same formula as ``StyleTransferEngine.apply()``:
+    - strength == 1.0 → return *styled* unchanged.
+    - strength  < 1.0 → linear interpolation toward *original*.
+    - strength  > 1.0 → extrapolation beyond *styled* (amplified effect).
+
+    Args:
+        original: Source image (RGB, any size).
+        styled:   Styled image at strength 1.0, same size as *original*.
+        strength: Target blend factor.
+
+    Returns:
+        A new PIL image blended/extrapolated to *strength*.
+    """
+    if strength == 1.0:
+        return styled.copy()
+    arr_orig   = np.array(original.convert("RGB"), dtype=np.float32)
+    arr_styled = np.array(styled, dtype=np.float32)
+    result = np.clip(arr_orig + strength * (arr_styled - arr_orig), 0, 255)
+    return Image.fromarray(result.astype(np.uint8))
 
 
 def _make_page(
@@ -238,29 +273,65 @@ def cmd_pdfoverview(
     styles: list[dict],
     tile_size: int,
     overlap: int,
-    strength: float,
+    strength: float,  # noqa: ARG001 — ignored; pdfoverview uses PDF_STRENGTHS
     use_float16: bool,
 ) -> None:
-    """Apply all styles and write a DIN-A4-landscape PDF contact sheet."""
-    source = Image.open(image_path).convert("RGB")
-    raw_styled = _apply_all_styles(
-        source, styles, tile_size, overlap, strength, use_float16
-    )
+    """Apply all styles at each PDF_STRENGTHS level and write a DIN-A4-landscape PDF.
 
-    if not raw_styled:
+    Each style produces ``len(PDF_STRENGTHS)`` consecutive cells labelled
+    ``"Style Name (100%)"``, ``"Style Name (150%)"`` etc.  Inference runs exactly
+    once per style; the extra strength variants are derived by pixel-level
+    blending, so processing time is the same as the single-strength version.
+    """
+    source = Image.open(image_path).convert("RGB")
+    engine = StyleTransferEngine()
+
+    # Build cell list: original first, then per-style groups of len(PDF_STRENGTHS)
+    cells: list[tuple[str, Image.Image]] = [("Original", source.copy())]
+    n_applied: int = 0
+
+    for style in styles:
+        style_id:   str  = style["id"]
+        style_name: str  = style.get("name", style_id)
+        model_path: Path = REPO_ROOT / style["model_path"]
+
+        if not model_path.exists():
+            print(f"  Skipping '{style_name}' — model not found: {model_path}")
+            continue
+
+        tensor_layout: str = style.get("tensor_layout", "nchw")
+        print(f"Processing style '{style_name}' ...", flush=True)
+        try:
+            engine.load_model(style_id, model_path, tensor_layout=tensor_layout)
+            styled_full = engine.apply(
+                source,
+                style_id,
+                strength=1.0,
+                tile_size=tile_size,
+                overlap=overlap,
+                use_float16=use_float16,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"  Error applying '{style_name}': {exc}")
+            continue
+        finally:
+            engine._sessions.pop(style_id, None)  # noqa: SLF001
+
+        for s in PDF_STRENGTHS:
+            label = f"{style_name} ({int(s * 100)}%)"
+            cells.append((label, _blend_to_strength(source, styled_full, s)))
+        n_applied += 1
+
+    if n_applied == 0:
         sys.exit("No styles were applied successfully — nothing to write.")
 
-    styled_results = build_cell_list(source, raw_styled)
     font = _load_font(int(LABEL_H * 0.60))
-
-    print()
-    n_pages = (len(styled_results) + CELLS_PER_PAGE - 1) // CELLS_PER_PAGE
-    print(f"Composing {n_pages} PDF page(s) ...", flush=True)
+    n_pages = (len(cells) + CELLS_PER_PAGE - 1) // CELLS_PER_PAGE
+    print(f"\nComposing {n_pages} PDF page(s) ...", flush=True)
 
     pages: list[Image.Image] = []
-    for i in range(0, len(styled_results), CELLS_PER_PAGE):
-        chunk = styled_results[i : i + CELLS_PER_PAGE]
-        pages.append(_make_page(chunk, font))
+    for i in range(0, len(cells), CELLS_PER_PAGE):
+        pages.append(_make_page(cells[i : i + CELLS_PER_PAGE], font))
 
     pdf_path = image_path.parent / (image_path.stem + "_thumbnails.pdf")
     pages[0].save(
@@ -273,7 +344,7 @@ def cmd_pdfoverview(
 
     print(
         f"\nOK  PDF written: {pdf_path}"
-        f"  ({len(pages)} page(s), {len(raw_styled)} style(s) + original)"
+        f"  ({len(pages)} page(s), {n_applied} style(s) × {len(PDF_STRENGTHS)} strengths + original)"
     )
 
 
@@ -321,6 +392,7 @@ Usage:
 
 Modes (exactly one required):
   -pdfoverview   Create a DIN-A4 landscape PDF contact sheet with all styles.
+                 Each style gets 3 cells: 100 %, 150 %, 200 % strength.
                  Output: <image-dir>/<stem>_thumbnails.pdf
   -fullimage     Save a full-resolution JPEG for each style.
                  Output: <image-dir>/<stem>_<stylename>.jpg  (one per style)
@@ -330,7 +402,8 @@ Options:
                  Aborts with an error if the name is not in the catalog.
   --tile-size N  Tile size for ONNX inference in pixels (default: 1024)
   --overlap N    Tile overlap in pixels (default: 128)
-  --strength F   Style blend strength 0.0-1.0 (default: 1.0)
+  --strength F   Style blend strength 0.0-3.0 (default: 1.0); --fullimage only.
+                 Ignored for --pdfoverview (fixed at 100 %/150 %/200 %).
   --float16      Enable float16 inference (faster on GPU/DML)
 
 Examples:

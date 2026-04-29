@@ -239,7 +239,7 @@ class TestMainIntegration:
         assert pdf_path.read_bytes()[:4] == b"%PDF"
 
     def test_pdf_has_two_pages_for_seven_styles(self, tmp_path: Path) -> None:
-        """7 styles + 1 original = 8 cells → 2 pages (6 + 2)."""
+        """7 styles × 3 strengths + 1 original = 22 cells → 4 pages (6+6+6+4)."""
         n_styles = 7
         styles_dir = tmp_path / "styles"
         styles_dir.mkdir()
@@ -277,7 +277,7 @@ class TestMainIntegration:
         pdf_bytes = (tmp_path / "photo_thumbnails.pdf").read_bytes()
         # Count "/Page " occurrences (each page object contains this)
         page_count = pdf_bytes.count(b"/Type /Page\n") + pdf_bytes.count(b"/Type/Page\n")
-        assert page_count >= 2, f"Expected >=2 PDF pages, found {page_count}"
+        assert page_count >= 4, f"Expected >=4 PDF pages, found {page_count}"
 
     def test_no_mode_flag_exits_with_error(self, tmp_path: Path) -> None:
         """Calling main() without --pdfoverview or --fullimage must exit with code 1."""
