@@ -194,6 +194,8 @@ class TestReplayLog:
         yml_text = window._format_replay_log()
         parsed = yaml.safe_load(yml_text)
         assert parsed["version"] == 1
+        assert parsed["tile_size"] == window._settings.tile_size
+        assert parsed["tile_overlap"] == window._settings.overlap
         assert len(parsed["steps"]) == 2
         assert parsed["steps"][0]["style"] == "Test Style"
         assert parsed["steps"][0]["strength"] == 100
@@ -259,6 +261,34 @@ class TestReplayLog:
 
         assert engine.apply.call_count == 1
         assert window._styled_photo is not None
+
+    def test_load_replay_applies_tile_settings(self, qtbot, tmp_path: Path) -> None:
+        """tile_size and tile_overlap in the YAML must be applied to settings."""
+        window, engine = _make_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+
+        chain = tmp_path / "chain.yml"
+        chain.write_text(textwrap.dedent("""\
+            version: 1
+            tile_size: 512
+            tile_overlap: 64
+            steps:
+              - style: Test Style
+                strength: 100
+        """), encoding="utf-8")
+
+        engine.apply = MagicMock(return_value=_dummy_image())
+
+        with (
+            patch("src.stylist.main_window.QFileDialog.getOpenFileName",
+                  return_value=(str(chain), "")),
+            patch("src.stylist.main_window.QMessageBox.critical"),
+            patch("src.stylist.main_window.QMessageBox.warning"),
+        ):
+            window._load_and_apply_replay_log()
+
+        assert window._settings.tile_size == 512
+        assert window._settings.overlap == 64
 
     def test_load_replay_log_invalid_schema_shows_error(self, qtbot, tmp_path: Path) -> None:
         window, _ = _make_window(qtbot, tmp_path)

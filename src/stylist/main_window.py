@@ -594,7 +594,12 @@ class MainWindow(QMainWindow):
             f"# PetersPictureStyler \u2013 style chain\n"
             f"# Created: {datetime.now():%Y-%m-%d %H:%M}\n"
         )
-        data = {"version": 1, "steps": list(self._replay_log)}
+        data = {
+            "version": 1,
+            "tile_size": self._settings.tile_size,
+            "tile_overlap": self._settings.overlap,
+            "steps": list(self._replay_log),
+        }
         return header + yaml.dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
     def _copy_replay_log_to_clipboard(self) -> None:
@@ -626,6 +631,17 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             QMessageBox.critical(self, "Invalid Replay Log", str(exc))
             return
+        # Apply tile settings from the log if present
+        if replay.tile_size is not None:
+            try:
+                self._settings.tile_size = replay.tile_size
+            except (ValueError, AttributeError):
+                pass  # ignore invalid value — keep current setting
+        if replay.tile_overlap is not None:
+            try:
+                self._settings.overlap = replay.tile_overlap
+            except (ValueError, AttributeError):
+                pass  # ignore invalid value
         # Reset image state, then apply each step in sequence
         self._styled_photo = None
         self._styled_photo_input = None

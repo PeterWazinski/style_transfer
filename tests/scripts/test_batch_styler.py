@@ -456,7 +456,53 @@ steps:
             patch("batch_styler.REPO_ROOT", tmp_path),
             pytest.raises(SystemExit),
         ):
-            bs.cmd_replay(photo, invalid_chain, tile_size=256, overlap=64, use_float16=False)
+            bs.cmd_replay(photo, invalid_chain, tile_size=None, overlap=None, use_float16=False)
+
+    def test_tile_settings_from_yaml_used_when_cli_none(self, tmp_path: Path) -> None:
+        """tile_size/tile_overlap stored in the YAML must be passed to engine.apply."""
+        photo, _, _ = self._setup(tmp_path, n_styles=2)
+        chain_with_tiles = tmp_path / "tiled_chain.yml"
+        chain_with_tiles.write_text(
+            "version: 1\ntile_size: 768\ntile_overlap: 32\n"
+            "steps:\n  - style: Candy\n    strength: 100\n  - style: Mosaic\n    strength: 150\n",
+            encoding="utf-8",
+        )
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(photo, chain_with_tiles, tile_size=None, overlap=None, use_float16=False)
+
+        for call in mock_engine.apply.call_args_list:
+            assert call[1]["tile_size"] == 768
+            assert call[1]["overlap"] == 32
+
+    def test_cli_tile_size_overrides_yaml(self, tmp_path: Path) -> None:
+        """An explicit CLI tile_size must take precedence over the YAML value."""
+        photo, _, _ = self._setup(tmp_path, n_styles=2)
+        chain_with_tiles = tmp_path / "tiled_chain.yml"
+        chain_with_tiles.write_text(
+            "version: 1\ntile_size: 768\ntile_overlap: 32\n"
+            "steps:\n  - style: Candy\n    strength: 100\n  - style: Mosaic\n    strength: 150\n",
+            encoding="utf-8",
+        )
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(photo, chain_with_tiles, tile_size=512, overlap=None, use_float16=False)
+
+        for call in mock_engine.apply.call_args_list:
+            assert call[1]["tile_size"] == 512   # CLI override
+            assert call[1]["overlap"] == 32      # from YAML
 
 
 class _OldTestMainFullImage:

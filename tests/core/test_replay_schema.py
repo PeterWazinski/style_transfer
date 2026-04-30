@@ -39,9 +39,28 @@ class TestReplaySchema:
         )
         replay = load_replay_log(yml)
         assert replay.version == 1
+        assert replay.tile_size is None
+        assert replay.tile_overlap is None
         assert len(replay.steps) == 2
         assert replay.steps[0] == ReplayStep(style="Anime Hayao", strength=150)
         assert replay.steps[1] == ReplayStep(style="Van Gogh", strength=75)
+
+    def test_valid_log_with_tile_settings(self, tmp_path: Path) -> None:
+        """tile_size and tile_overlap are parsed correctly when present."""
+        yml = _write_yaml(
+            tmp_path,
+            """\
+            version: 1
+            tile_size: 512
+            tile_overlap: 64
+            steps:
+              - style: Candy
+                strength: 100
+            """,
+        )
+        replay = load_replay_log(yml)
+        assert replay.tile_size == 512
+        assert replay.tile_overlap == 64
 
     def test_missing_steps_raises(self, tmp_path: Path) -> None:
         """A YAML file without a ``steps`` key raises ValueError."""

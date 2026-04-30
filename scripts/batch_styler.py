@@ -329,8 +329,8 @@ def cmd_pdfoverview(
 def cmd_replay(
     image_path: Path,
     replay_path: Path,
-    tile_size: int,
-    overlap: int,
+    tile_size: int | None,
+    overlap: int | None,
     use_float16: bool,
     strength_override: int | None = None,
 ) -> None:
@@ -342,6 +342,10 @@ def cmd_replay(
     except ValueError as exc:
         sys.exit(f"Error: {exc}")
 
+    # CLI args take precedence; fall back to values stored in the YAML, then hard defaults.
+    effective_tile_size: int = tile_size if tile_size is not None else (replay.tile_size if replay.tile_size is not None else 1024)
+    effective_overlap: int = overlap if overlap is not None else (replay.tile_overlap if replay.tile_overlap is not None else 128)
+
     catalog_path = REPO_ROOT / "styles" / "catalog.json"
     if not catalog_path.exists():
         sys.exit(f"Error: catalog not found: {catalog_path}")
@@ -349,6 +353,9 @@ def cmd_replay(
     with open(catalog_path, encoding="utf-8") as f:
         catalog: dict = json.load(f)
     styles: list[dict] = catalog.get("styles", [])
+
+    print(f"Tile size    : {effective_tile_size} px  overlap: {effective_overlap} px")
+    print()
 
     engine = StyleTransferEngine()
     result = Image.open(image_path).convert("RGB")
@@ -372,8 +379,8 @@ def cmd_replay(
             result,
             catalog_style["id"],
             strength=strength,
-            tile_size=tile_size,
-            overlap=overlap,
+            tile_size=effective_tile_size,
+            overlap=effective_overlap,
             use_float16=use_float16,
         )
         engine._sessions.pop(catalog_style["id"], None)  # noqa: SLF001
@@ -440,12 +447,12 @@ def main() -> None:
     )
     parser.add_argument("image", type=Path, help="Source image file (JPEG or PNG)")
     parser.add_argument(
-        "--tile-size", type=int, default=1024,
-        help="Tile size for inference (default: 1024)",
+        "--tile-size", type=int, default=None,
+        help="Tile size for inference in pixels. Overrides the value stored in the replay YAML. Default: use YAML value or 1024.",
     )
     parser.add_argument(
-        "--overlap", type=int, default=128,
-        help="Tile overlap in pixels (default: 128)",
+        "--overlap", type=int, default=None,
+        help="Tile overlap in pixels. Overrides the value stored in the replay YAML. Default: use YAML value or 128.",
     )
     parser.add_argument(
         "--strength-override", type=int, default=None, metavar="PCT",
@@ -493,15 +500,18 @@ def main() -> None:
     if args.style:
         styles = filter_styles_by_name(styles, args.style)
 
+    pdf_tile_size: int = args.tile_size if args.tile_size is not None else 1024
+    pdf_overlap: int = args.overlap if args.overlap is not None else 128
+
     print(f"Source image : {image_path}")
     print(f"Styles       : {len(styles)} style(s)" + (f" (filtered: '{args.style}')" if args.style else ""))
-    print(f"Tile size    : {args.tile_size} px  overlap: {args.overlap} px")
+    print(f"Tile size    : {pdf_tile_size} px  overlap: {pdf_overlap} px")
     print()
 
     cmd_pdfoverview(
         image_path, styles,
-        tile_size=args.tile_size,
-        overlap=args.overlap,
+        tile_size=pdf_tile_size,
+        overlap=pdf_overlap,
         strength=1.0,
         use_float16=args.float16,
     )

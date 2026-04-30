@@ -9,6 +9,8 @@ Example file::
     # PetersPictureStyler – style chain
     # Created: 2026-04-30 14:32
     version: 1
+    tile_size: 1024
+    tile_overlap: 128
     steps:
       - style: Anime Hayao
         strength: 150
@@ -20,6 +22,8 @@ Schema rules:
 - ``steps`` must be a non-empty list.
 - Each step requires ``style`` (non-empty string) and ``strength``
   (integer, 1–300, representing a percentage).
+- ``tile_size`` and ``tile_overlap`` are optional integers.  When present
+  they override the CLI / app defaults during replay.
 """
 from __future__ import annotations
 
@@ -40,6 +44,8 @@ class ReplayLog(BaseModel):
     """A complete style-transfer chain stored in a replay log file."""
 
     version: int = Field(default=1, description="File format version; must be 1")
+    tile_size: int | None = Field(default=None, gt=0, description="Tile size in pixels used during recording")
+    tile_overlap: int | None = Field(default=None, gt=0, description="Tile overlap in pixels used during recording")
     steps: list[ReplayStep] = Field(..., min_length=1, description="Ordered list of style steps")
 
     @field_validator("version")
