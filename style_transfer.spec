@@ -45,6 +45,10 @@ a = Analysis(
         "PIL._tkinter_finder",
         # cv2 headless binding
         "cv2",
+        # replay log YAML support
+        "yaml",
+        # schema validation
+        "pydantic",
     ],
     hookspath=[],
     hooksconfig={},
@@ -83,6 +87,10 @@ b = Analysis(
         "onnxruntime.capi",
         "onnxruntime.capi._pybind_state",
         "PIL._tkinter_finder",
+        # replay log YAML support
+        "yaml",
+        # schema validation
+        "pydantic",
     ],
     hookspath=[],
     hooksconfig={},
