@@ -231,6 +231,7 @@ class PhotoCanvasView(QWidget):
         ctrl.addWidget(self.apply_button)
         ctrl.addWidget(self.reapply_button)
         ctrl.addWidget(self.undo_button)
+        ctrl.addSpacing(24)
         root.addLayout(ctrl)
 
         # Connections
