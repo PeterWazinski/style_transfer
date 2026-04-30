@@ -24,7 +24,6 @@ from PySide6.QtGui import (
     QColor, QCursor, QPainter, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
@@ -215,13 +214,7 @@ class PhotoCanvasView(QWidget):
         ctrl.addWidget(self.reset_button)
         ctrl.addWidget(self.save_button)
 
-        # Visual separator between the two button groups
-        ctrl.addSpacing(6)
-        _sep = QFrame(self)
-        _sep.setFrameShape(QFrame.Shape.VLine)
-        _sep.setFrameShadow(QFrame.Shadow.Sunken)
-        ctrl.addWidget(_sep)
-        ctrl.addSpacing(6)
+        ctrl.addSpacing(24)  # visual gap between groups
 
         # Right group: ▶ | ⏩ | ↩
         self.apply_button = QPushButton("\u25b6", self)
