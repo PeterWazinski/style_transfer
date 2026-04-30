@@ -30,6 +30,11 @@ from src.core.engine import StyleTransferEngine
 _DML_CRASH_CODES = ("887A0020", "887A0006", "887A0005", "887A0007")
 
 
+def is_gpu_crash(message: str) -> bool:
+    """Return True if *message* contains a DirectML/D3D12 driver-crash error code."""
+    return any(code in message for code in _DML_CRASH_CODES)
+
+
 def _friendly_error(exc: Exception) -> str:
     """Return a human-readable error message, with extra guidance for GPU driver crashes."""
     msg = str(exc)

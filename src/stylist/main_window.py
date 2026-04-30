@@ -46,7 +46,7 @@ from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.registry import StyleRegistry
 from src.core.settings import AppSettings
-from src.stylist.apply_worker import ApplyWorker
+from src.stylist.apply_worker import ApplyWorker, is_gpu_crash as _is_gpu_crash
 from src.stylist.photo_canvas import PhotoCanvasView
 from src.stylist.settings_dialog import SettingsDialog
 from src.stylist.style_gallery import StyleGalleryView
@@ -352,8 +352,17 @@ class MainWindow(QMainWindow):
         if cancelled_holder[0]:
             return None
         if error_holder[0]:
-            logger.error("Style transfer error: %s", error_holder[0])
-            QMessageBox.critical(self, "Apply Error", error_holder[0])
+            msg = error_holder[0]
+            logger.error("Style transfer error: %s", msg)
+            if _is_gpu_crash(msg):
+                QMessageBox.critical(self, "GPU Driver Error", msg)
+                _restart_tip = "GPU driver crashed — please restart the application."
+                self.canvas.apply_button.setEnabled(False)
+                self.canvas.apply_button.setToolTip(_restart_tip)
+                self.canvas.reapply_button.setEnabled(False)
+                self.canvas.reapply_button.setToolTip(_restart_tip)
+            else:
+                QMessageBox.critical(self, "Apply Error", msg)
             return None
         return result_holder[0]
 
