@@ -9,7 +9,7 @@ Tests cover:
 - build_cell_list() includes all styled results after the original
 - _style_name_to_filename() sanitises names for use as file-system stems
 - main() --pdfoverview: mock engine, verify PDF is created and is a valid PDF
-- main() --fullimage: mock engine, verify per-style JPEGs are written
+- main() --replay: mock engine, verify replay chain is applied and JPEG is written
 - main() without mode flag: exits with code 1
 - Original image is the first cell (pixel check)
 """
@@ -280,7 +280,7 @@ class TestMainIntegration:
         assert page_count >= 4, f"Expected >=4 PDF pages, found {page_count}"
 
     def test_no_mode_flag_exits_with_error(self, tmp_path: Path) -> None:
-        """Calling main() without --pdfoverview or --fullimage must exit with code 1."""
+        """Calling main() without --pdfoverview or --replay must exit with code 1."""
         photo = tmp_path / "photo.jpg"
         _solid((100, 100, 100), size=64).save(photo)
         with pytest.raises(SystemExit) as exc_info:
@@ -290,10 +290,176 @@ class TestMainIntegration:
 
 
 # ---------------------------------------------------------------------------
-# Integration: main() --fullimage
+# Integration: main() --replay
 # ---------------------------------------------------------------------------
 
-class TestMainFullImage:
+class TestCmdReplay:
+    """Tests for cmd_replay() — the --replay mode."""
+
+    _CHAIN_YAML = """\
+version: 1
+steps:
+  - style: Candy
+    strength: 100
+  - style: Mosaic
+    strength: 150
+"""
+
+    def _setup(self, tmp_path: Path, n_styles: int = 2) -> tuple[Path, Path, list[dict]]:
+        """Create a catalog, a photo, and a chain YAML in tmp_path."""
+        entries = []
+        names = ["Candy", "Mosaic", "Udnie"]
+        for i in range(n_styles):
+            sid = names[i].lower()
+            onnx = tmp_path / "styles" / sid / "model.onnx"
+            onnx.parent.mkdir(parents=True, exist_ok=True)
+            onnx.write_bytes(b"fake")
+            entries.append({
+                "id": sid,
+                "name": names[i],
+                "model_path": f"styles/{sid}/model.onnx",
+            })
+        (tmp_path / "styles" / "catalog.json").write_text(
+            json.dumps({"styles": entries}), encoding="utf-8"
+        )
+        photo = tmp_path / "photo.jpg"
+        _solid((100, 150, 200), size=64).save(photo)
+        chain = tmp_path / "my_chain.yml"
+        chain.write_text(self._CHAIN_YAML, encoding="utf-8")
+        return photo, chain, entries
+
+    def test_replay_applies_steps_in_order(self, tmp_path: Path) -> None:
+        """engine.apply must be called once per step, in order."""
+        photo, chain, _ = self._setup(tmp_path, n_styles=2)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(
+                photo, chain,
+                tile_size=256, overlap=64, use_float16=False,
+            )
+
+        assert mock_engine.apply.call_count == 2
+        # First call uses style id 'candy'
+        first_call_style_id = mock_engine.apply.call_args_list[0][0][1]
+        assert first_call_style_id == "candy"
+        second_call_style_id = mock_engine.apply.call_args_list[1][0][1]
+        assert second_call_style_id == "mosaic"
+
+    def test_replay_output_filename(self, tmp_path: Path) -> None:
+        """Output file must be <photo-stem>_<chain-stem>.jpg."""
+        photo, chain, _ = self._setup(tmp_path, n_styles=2)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(
+                photo, chain,
+                tile_size=256, overlap=64, use_float16=False,
+            )
+
+        expected = tmp_path / "photo_my_chain.jpg"
+        assert expected.exists(), "Output JPEG was not created"
+        assert expected.stat().st_size > 0
+
+    def test_replay_unknown_style_exits(self, tmp_path: Path) -> None:
+        """A step referencing an unknown style name must exit with an error."""
+        photo = tmp_path / "photo.jpg"
+        _solid((100, 100, 100), size=64).save(photo)
+        bad_chain = tmp_path / "bad.yml"
+        bad_chain.write_text(
+            "version: 1\nsteps:\n  - style: NonExistent\n    strength: 100\n",
+            encoding="utf-8",
+        )
+        # Minimal catalog with no matching style
+        onnx = tmp_path / "styles" / "candy" / "model.onnx"
+        onnx.parent.mkdir(parents=True, exist_ok=True)
+        onnx.write_bytes(b"fake")
+        (tmp_path / "styles" / "catalog.json").write_text(
+            json.dumps({"styles": [{"id": "candy", "name": "Candy", "model_path": "styles/candy/model.onnx"}]}),
+            encoding="utf-8",
+        )
+        with (
+            patch("batch_styler.REPO_ROOT", tmp_path),
+            pytest.raises(SystemExit),
+        ):
+            bs.cmd_replay(photo, bad_chain, tile_size=256, overlap=64, use_float16=False)
+
+    def test_replay_strength_converted_to_float(self, tmp_path: Path) -> None:
+        """Each step's integer % strength must be divided by 100 before engine.apply."""
+        photo, chain, _ = self._setup(tmp_path, n_styles=2)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(photo, chain, tile_size=256, overlap=64, use_float16=False)
+
+        # Chain has Candy @ 100% (1.0) and Mosaic @ 150% (1.5)
+        first_strength = mock_engine.apply.call_args_list[0][1]["strength"]
+        second_strength = mock_engine.apply.call_args_list[1][1]["strength"]
+        assert abs(first_strength - 1.0) < 1e-6
+        assert abs(second_strength - 1.5) < 1e-6
+
+    def test_replay_strength_override_scales_all_steps(self, tmp_path: Path) -> None:
+        """--strength-override 60 must scale each step's strength by 0.60."""
+        photo, chain, _ = self._setup(tmp_path, n_styles=2)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(
+                photo, chain,
+                tile_size=256, overlap=64, use_float16=False,
+                strength_override=60,
+            )
+
+        # Candy: 100% × 0.60 = 0.60; Mosaic: 150% × 0.60 = 0.90
+        first_strength = mock_engine.apply.call_args_list[0][1]["strength"]
+        second_strength = mock_engine.apply.call_args_list[1][1]["strength"]
+        assert abs(first_strength - 0.60) < 1e-6
+        assert abs(second_strength - 0.90) < 1e-6
+
+    def test_replay_invalid_schema_exits(self, tmp_path: Path) -> None:
+        """A YAML with invalid schema (e.g. strength out of range) must exit."""
+        photo = tmp_path / "photo.jpg"
+        _solid((100, 100, 100), size=64).save(photo)
+        invalid_chain = tmp_path / "invalid.yml"
+        invalid_chain.write_text(
+            "version: 1\nsteps:\n  - style: Candy\n    strength: 999\n",
+            encoding="utf-8",
+        )
+        onnx = tmp_path / "styles" / "candy" / "model.onnx"
+        onnx.parent.mkdir(parents=True, exist_ok=True)
+        onnx.write_bytes(b"fake")
+        (tmp_path / "styles" / "catalog.json").write_text(
+            json.dumps({"styles": [{"id": "candy", "name": "Candy", "model_path": "styles/candy/model.onnx"}]}),
+            encoding="utf-8",
+        )
+        with (
+            patch("batch_styler.REPO_ROOT", tmp_path),
+            pytest.raises(SystemExit),
+        ):
+            bs.cmd_replay(photo, invalid_chain, tile_size=256, overlap=64, use_float16=False)
+
+
+class _OldTestMainFullImage:
     def _setup_catalog(self, tmp_path: Path, n: int = 3) -> tuple[Path, list[dict]]:
         """Create n fake style entries in a temporary catalog."""
         entries = []
@@ -349,23 +515,7 @@ class TestMainFullImage:
         assert not (tmp_path / "photo_original.jpg").exists()
 
     def test_output_is_valid_jpeg(self, tmp_path: Path) -> None:
-        """Each written file should open as a valid JPEG."""
-        photo, entries = self._setup_catalog(tmp_path, n=1)
-        mock_engine = MagicMock()
-        result_img = _solid((200, 100, 50), size=128)
-        mock_engine.apply.return_value = result_img
-
-        with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
-        ):
-            with patch("sys.argv", ["batch_styler.py", "--fullimage", str(photo)]):
-                bs.main()
-
-        stem = bs._style_name_to_filename(entries[0]["name"])
-        out = tmp_path / f"photo_{stem}.jpg"
-        opened = Image.open(out)
-        assert opened.format == "JPEG"
+        pass  # removed — --fullimage no longer exists
 
 
 # ---------------------------------------------------------------------------
@@ -444,48 +594,6 @@ class TestMainStyleFilter:
         _solid((100, 100, 100), size=64).save(photo)
         return photo
 
-    def _run_fullimage(self, tmp_path: Path, *extra: str) -> list[str]:
-        """Run --fullimage, intercept _apply_all_styles, return style names received."""
-        photo = self._setup_catalog(tmp_path)
-        called: list[str] = []
-
-        def _fake_apply(
-            source: Image.Image,
-            styles: list[dict],
-            tile_size: int,
-            overlap: int,
-            strength: float,
-            use_float16: bool,
-        ) -> list[tuple[str, Image.Image]]:
-            called.extend(s["name"] for s in styles)
-            return [(styles[0]["name"], _solid((1, 2, 3)))]
-
-        argv = ["batch_styler.py", "--fullimage", str(photo), *extra]
-        with (
-            patch.object(bs, "REPO_ROOT", tmp_path),
-            patch.object(bs, "_apply_all_styles", side_effect=_fake_apply),
-        ):
-            with patch("sys.argv", argv):
-                bs.main()
-        return called
-
-    def test_no_filter_passes_all_styles(self, tmp_path: Path) -> None:
-        called = self._run_fullimage(tmp_path)
-        assert called == ["Candy", "Mosaic", "Udnie"]
-
-    def test_style_filter_passes_only_matching_style(self, tmp_path: Path) -> None:
-        called = self._run_fullimage(tmp_path, "--style", "Candy")
-        assert called == ["Candy"]
-
-    def test_style_filter_case_insensitive(self, tmp_path: Path) -> None:
-        called = self._run_fullimage(tmp_path, "--style", "MOSAIC")
-        assert called == ["Mosaic"]
-
-    def test_unknown_style_aborts_before_inference(self, tmp_path: Path) -> None:
-        with pytest.raises(SystemExit) as exc_info:
-            self._run_fullimage(tmp_path, "--style", "NoSuchStyle")
-        assert exc_info.value.code is not None
-
     def test_pdfoverview_with_style_filter(self, tmp_path: Path) -> None:
         """--style must also work with --pdfoverview mode."""
         photo = self._setup_catalog(tmp_path)
@@ -526,13 +634,10 @@ class TestMainStyleFilter:
         assert called == ["Candy", "Mosaic", "Udnie"]
 
 
-# ---------------------------------------------------------------------------
-# _apply_all_styles: tensor_layout forwarded to load_model
-# ---------------------------------------------------------------------------
+# (TestApplyAllStylesTensorLayout removed — _apply_all_styles was replaced by cmd_replay)
 
-class TestApplyAllStylesTensorLayout:
-    """Regression: load_model must receive tensor_layout from the catalog entry."""
 
+class _SkippedApplyAllStyles:
     def test_nhwc_tanh_layout_forwarded_to_load_model(self, tmp_path: Path) -> None:
         """If a style has tensor_layout=nhwc_tanh in the catalog, load_model
         must be called with tensor_layout='nhwc_tanh', not the default 'nchw'.

@@ -1,4 +1,4 @@
-"""Batch style transfer — apply every catalog style to one image.
+"""Batch style transfer — apply styles to one image.
 
 Two modes (exactly one must be specified):
 
@@ -9,12 +9,19 @@ Two modes (exactly one must be specified):
     per style; the extra strength variants are derived by pixel-level blending.
     Output: ``<stem>_thumbnails.pdf`` next to the source image.
 
-``--fullimage``
-    Saves a full-resolution styled JPEG for every style.
-    Output: ``<stem>_<style_name>.jpg`` next to the source image.
-    The original is not duplicated.
+``--replay``
+    Applies a saved style-chain YAML (produced by the interactive app) to one
+    image, executing every step in order.  Suitable for batch re-application of
+    a chain that was tuned interactively.
+    Output: ``<stem>_<chain_stem>.jpg`` next to the source image.
 
-Optional filter:
+Optional arguments for ``--replay``:
+
+``--strength-override N``
+    Scale every step's strength by N percent without editing the file.
+    E.g. ``--strength-override 60`` turns 150 %/75 % into 90 %/45 %.
+
+Optional filter (``--pdfoverview`` only):
 
 ``--style "MyStyle"``
     Apply only the named style (case-insensitive).  Aborts with an error
@@ -23,8 +30,9 @@ Optional filter:
 Usage::
 
     python scripts/batch_styler.py --pdfoverview path/to/photo.jpg
-    python scripts/batch_styler.py --fullimage   path/to/photo.jpg --strength 0.9
-    python scripts/batch_styler.py --fullimage   path/to/photo.jpg --style "Anime Hayao"
+    python scripts/batch_styler.py --pdfoverview path/to/photo.jpg --style "Anime Hayao"
+    python scripts/batch_styler.py --replay .\\my_chain.yml path/to/photo.jpg
+    python scripts/batch_styler.py --replay .\\my_chain.yml path/to/photo.jpg --strength-override 60
 """
 from __future__ import annotations
 
@@ -175,56 +183,8 @@ def build_cell_list(
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Shared: run inference for all styles, return list of (name, image) pairs
+# Helpers
 # ---------------------------------------------------------------------------
-
-def _apply_all_styles(
-    source: Image.Image,
-    styles: list[dict],
-    tile_size: int,
-    overlap: int,
-    strength: float,
-    use_float16: bool,
-) -> list[tuple[str, Image.Image]]:
-    """Apply every style in *styles* to *source* and return results.
-
-    Skips styles whose model file is missing.  Prints a progress line for
-    each style.  Returns a list of ``(style_name, result_image)`` pairs.
-    """
-    engine = StyleTransferEngine()
-    results: list[tuple[str, Image.Image]] = []
-
-    for style in styles:
-        style_id: str   = style["id"]
-        style_name: str = style.get("name", style_id)
-        model_path: Path = REPO_ROOT / style["model_path"]
-
-        if not model_path.exists():
-            print(f"  Skipping '{style_name}' — model not found: {model_path}")
-            continue
-
-        tensor_layout: str = style.get("tensor_layout", "nchw")
-        print(f"Processing style '{style_name}' ...", flush=True)
-        try:
-            engine.load_model(style_id, model_path, tensor_layout=tensor_layout)
-            result = engine.apply(
-                source,
-                style_id,
-                strength=strength,
-                tile_size=tile_size,
-                overlap=overlap,
-                use_float16=use_float16,
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(f"  Error applying '{style_name}': {exc}")
-            continue
-        finally:
-            engine._sessions.pop(style_id, None)  # noqa: SLF001
-
-        results.append((style_name, result))
-
-    return results
-
 
 def _style_name_to_filename(style_name: str) -> str:
     """Convert a style display name to a safe filename stem."""
@@ -361,37 +321,69 @@ def cmd_pdfoverview(
     )
 
 
+
 # ---------------------------------------------------------------------------
-# Command: --fullimage
+# Command: --replay
 # ---------------------------------------------------------------------------
 
-def cmd_fullimage(
+def cmd_replay(
     image_path: Path,
-    styles: list[dict],
+    replay_path: Path,
     tile_size: int,
     overlap: int,
-    strength: float,
     use_float16: bool,
+    strength_override: int | None = None,
 ) -> None:
-    """Apply all styles and save a full-resolution JPEG per style."""
-    source = Image.open(image_path).convert("RGB")
-    raw_styled = _apply_all_styles(
-        source, styles, tile_size, overlap, strength, use_float16
-    )
+    """Apply a saved style-chain YAML to *image_path*, step by step."""
+    from src.core.replay_schema import load_replay_log  # noqa: PLC0415
 
-    if not raw_styled:
-        sys.exit("No styles were applied successfully — nothing to write.")
+    try:
+        replay = load_replay_log(replay_path)
+    except ValueError as exc:
+        sys.exit(f"Error: {exc}")
 
-    print()
-    written: list[Path] = []
-    for style_name, result in raw_styled:
-        stem = _style_name_to_filename(style_name)
-        out_path = image_path.parent / f"{image_path.stem}_{stem}.jpg"
-        result.save(out_path, format="JPEG", quality=92)
-        print(f"  Saved: {out_path}")
-        written.append(out_path)
+    catalog_path = REPO_ROOT / "styles" / "catalog.json"
+    if not catalog_path.exists():
+        sys.exit(f"Error: catalog not found: {catalog_path}")
 
-    print(f"\nOK  {len(written)} image(s) written to {image_path.parent}")
+    with open(catalog_path, encoding="utf-8") as f:
+        catalog: dict = json.load(f)
+    styles: list[dict] = catalog.get("styles", [])
+
+    engine = StyleTransferEngine()
+    result = Image.open(image_path).convert("RGB")
+    scale = (strength_override / 100.0) if strength_override is not None else 1.0
+
+    for i, step in enumerate(replay.steps, start=1):
+        matched = filter_styles_by_name(styles, step.style)
+        catalog_style = matched[0]
+        model_path = REPO_ROOT / catalog_style["model_path"]
+        if not model_path.exists():
+            sys.exit(f"Step {i}: model not found for '{step.style}': {model_path}")
+        tensor_layout: str = catalog_style.get("tensor_layout", "nchw")
+        strength = (step.strength * scale) / 100.0
+        effective_pct = int(step.strength * scale)
+        print(
+            f"Step {i}/{len(replay.steps)}: '{step.style}' @ {effective_pct}% ...",
+            flush=True,
+        )
+        engine.load_model(catalog_style["id"], model_path, tensor_layout=tensor_layout)
+        result = engine.apply(
+            result,
+            catalog_style["id"],
+            strength=strength,
+            tile_size=tile_size,
+            overlap=overlap,
+            use_float16=use_float16,
+        )
+        engine._sessions.pop(catalog_style["id"], None)  # noqa: SLF001
+
+    out_path = image_path.parent / f"{image_path.stem}_{replay_path.stem}.jpg"
+    result.save(out_path, format="JPEG", quality=92)
+    print(f"\nOK  Result written: {out_path}")
+
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -400,29 +392,35 @@ def cmd_fullimage(
 
 _USAGE = r"""
 Usage:
-  batch_styler.ps1 -pdfoverview <image>  [options]
-  batch_styler.ps1 -fullimage   <image>  [options]
+  batch_styler.exe --pdfoverview <image>  [options]
+  batch_styler.exe --replay      <chain.yml> <image>  [options]
 
 Modes (exactly one required):
-  -pdfoverview   Create a DIN-A4 landscape PDF contact sheet with all styles.
+  --pdfoverview  Create a DIN-A4 landscape PDF contact sheet with all styles.
                  Each style gets 3 cells: 100 %, 150 %, 200 % strength.
                  Output: <image-dir>/<stem>_thumbnails.pdf
-  -fullimage     Save a full-resolution JPEG for each style.
-                 Output: <image-dir>/<stem>_<stylename>.jpg  (one per style)
+  --replay FILE  Apply a saved style-chain YAML to the image, executing every
+                 step in order.
+                 Output: <image-dir>/<stem>_<chain-stem>.jpg
 
-Options:
-  --style NAME   Apply only the named style (case-insensitive).
-                 Aborts with an error if the name is not in the catalog.
+Options for --pdfoverview:
+  --style NAME           Apply only the named style (case-insensitive).
+                         Aborts with an error if the name is not in the catalog.
+
+Options for --replay:
+  --strength-override N  Scale every step's strength by N percent (integer).
+                         E.g. --strength-override 60 turns 150% → 90%.
+
+Common options:
   --tile-size N  Tile size for ONNX inference in pixels (default: 1024)
   --overlap N    Tile overlap in pixels (default: 128)
-  --strength F   Style blend strength 0.0-3.0 (default: 1.0); --fullimage only.
-                 Ignored for --pdfoverview (fixed at 100 %/150 %/200 %).
   --float16      Enable float16 inference (faster on GPU/DML)
 
 Examples:
-  batch_styler.ps1 -pdfoverview photos\portrait.jpg
-  batch_styler.ps1 -fullimage   photos\portrait.jpg --strength 0.85
-  batch_styler.ps1 -fullimage   photos\portrait.jpg --style "Anime Hayao"
+  batch_styler.exe --pdfoverview photos\portrait.jpg
+  batch_styler.exe --pdfoverview photos\portrait.jpg --style "Anime Hayao"
+  batch_styler.exe --replay my_chain.yml photos\portrait.jpg
+  batch_styler.exe --replay my_chain.yml photos\portrait.jpg --strength-override 60
 """
 
 
@@ -437,8 +435,8 @@ def main() -> None:
         help="Create a PDF contact sheet with all styles.",
     )
     mode_group.add_argument(
-        "--fullimage", action="store_true",
-        help="Save a full-resolution JPEG for each style.",
+        "--replay", type=Path, metavar="CHAIN",
+        help="Apply a saved style-chain YAML to the image.",
     )
     parser.add_argument("image", type=Path, help="Source image file (JPEG or PNG)")
     parser.add_argument(
@@ -450,8 +448,8 @@ def main() -> None:
         help="Tile overlap in pixels (default: 128)",
     )
     parser.add_argument(
-        "--strength", type=float, default=1.0,
-        help="Style blend strength 0.0-1.0 (default: 1.0)",
+        "--strength-override", type=int, default=None, metavar="PCT",
+        help="Scale all replay step strengths by this percentage. Only used with --replay.",
     )
     parser.add_argument(
         "--float16", action="store_true", default=False,
@@ -463,13 +461,23 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not args.pdfoverview and not args.fullimage:
+    if not args.pdfoverview and not args.replay:
         print(_USAGE)
         sys.exit(1)
 
     image_path: Path = args.image.resolve()
     if not image_path.exists():
         sys.exit(f"Error: image not found: {image_path}")
+
+    if args.replay:
+        cmd_replay(
+            image_path, args.replay.resolve(),
+            tile_size=args.tile_size,
+            overlap=args.overlap,
+            use_float16=args.float16,
+            strength_override=args.strength_override,
+        )
+        return
 
     catalog_path = REPO_ROOT / "styles" / "catalog.json"
     if not catalog_path.exists():
@@ -490,22 +498,13 @@ def main() -> None:
     print(f"Tile size    : {args.tile_size} px  overlap: {args.overlap} px")
     print()
 
-    if args.pdfoverview:
-        cmd_pdfoverview(
-            image_path, styles,
-            tile_size=args.tile_size,
-            overlap=args.overlap,
-            strength=args.strength,
-            use_float16=args.float16,
-        )
-    else:
-        cmd_fullimage(
-            image_path, styles,
-            tile_size=args.tile_size,
-            overlap=args.overlap,
-            strength=args.strength,
-            use_float16=args.float16,
-        )
+    cmd_pdfoverview(
+        image_path, styles,
+        tile_size=args.tile_size,
+        overlap=args.overlap,
+        strength=1.0,
+        use_float16=args.float16,
+    )
 
 
 if __name__ == "__main__":
