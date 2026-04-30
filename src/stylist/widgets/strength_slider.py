@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 # Tick positions drawn below the slider track (% values)
 _TICKS: list[int] = [0, 50, 100, 150, 200, 250, 300]
+_LABEL_TICKS: set[int] = {0, 100, 200, 300}   # labelled; others show tick only
 _NATURAL: int = 100  # "natural" reference — full model output, no extrapolation
 
 
@@ -52,6 +53,14 @@ class _TickLabels(QWidget):
         for tick in _TICKS:
             ratio = (tick - self._slider.minimum()) / value_range
             x = groove_left + int(ratio * groove_width)
+
+            if tick not in _LABEL_TICKS:
+                # Draw a short tick mark only — no label
+                painter.setPen(self.palette().windowText().color())
+                painter.setFont(tick_font)
+                fm = painter.fontMetrics()
+                painter.drawText(x, fm.ascent(), "·")
+                continue
 
             if tick == _NATURAL:
                 painter.setFont(bold_font)
