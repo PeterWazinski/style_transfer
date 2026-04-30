@@ -23,6 +23,29 @@ from PySide6.QtCore import QThread, Signal
 
 from src.core.engine import StyleTransferEngine
 
+# DirectML / D3D12 driver-crash error codes (hex) that appear in ONNX error strings.
+# 0x887A0020 = DXGI_ERROR_DRIVER_INTERNAL_ERROR
+# 0x887A0006 = DXGI_ERROR_DEVICE_HUNG
+# 0x887A0005 = DXGI_ERROR_DEVICE_REMOVED
+_DML_CRASH_CODES = ("887A0020", "887A0006", "887A0005", "887A0007")
+
+
+def _friendly_error(exc: Exception) -> str:
+    """Return a human-readable error message, with extra guidance for GPU driver crashes."""
+    msg = str(exc)
+    if any(code in msg for code in _DML_CRASH_CODES):
+        return (
+            "The GPU driver crashed during inference (DirectML error).\n\n"
+            "This usually means the selected style is too demanding for your GPU at the "
+            "current tile size, or the driver is unstable.\n\n"
+            "Suggestions:\n"
+            "  • Reduce the Tile Size in File \u2192 Settings (e.g. 512 px)\n"
+            "  • Restart the application and try again\n"
+            "  • Update your GPU driver\n\n"
+            f"Technical detail: {msg}"
+        )
+    return msg
+
 
 class _CancelledError(Exception):
     """Internal sentinel raised by the progress callback on interruption."""
@@ -89,7 +112,7 @@ class ApplyWorker(QThread):
         except _CancelledError:
             self.cancelled.emit()
         except Exception as exc:  # noqa: BLE001
-            self.error.emit(str(exc))
+            self.error.emit(_friendly_error(exc))
         else:
             self.finished.emit(result)
 
