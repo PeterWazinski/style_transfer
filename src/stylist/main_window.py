@@ -621,8 +621,9 @@ class MainWindow(QMainWindow):
         if self._current_photo is None:
             QMessageBox.information(self, "Load Replay Log", "Open a photo first.")
             return
+        start_dir = self._settings.last_save_dir or self._settings.default_output_dir or ""
         path_str, _ = QFileDialog.getOpenFileName(
-            self, "Load Replay Log", "", "YAML style chain (*.yml *.yaml)"
+            self, "Load Replay Log", start_dir, "YAML style chain (*.yml *.yaml)"
         )
         if not path_str:
             return
