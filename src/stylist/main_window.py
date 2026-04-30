@@ -165,6 +165,11 @@ class MainWindow(QMainWindow):
 
         # Help menu
         help_menu = mb.addMenu("Help")
+        how_to_action = QAction("How to Use\u2026", self)
+        how_to_action.triggered.connect(self._show_how_to_use)
+        help_menu.addAction(how_to_action)
+
+        help_menu.addSeparator()
         about_nst_action = QAction("About Neural Style Transfer\u2026", self)
         about_nst_action.triggered.connect(self._show_about_nst)
         help_menu.addAction(about_nst_action)
@@ -567,6 +572,43 @@ class MainWindow(QMainWindow):
         layout.addWidget(ok_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
         dlg.exec()
+
+    def _show_how_to_use(self) -> None:
+        self._show_link_dialog(
+            "How to Use",
+            "<b>Basic workflow</b><br>"
+            "<ol>"
+            "<li><b>Open a photo</b> &mdash; click <b>\U0001f4c2</b> or use <i>File &rarr; Open Photo</i> "
+            "(Ctrl+O).</li>"
+            "<li><b>Select a style</b> &mdash; click a thumbnail in the Styles panel on the left. "
+            "The style is pre-loaded so the first apply is fast.</li>"
+            "<li><b>Apply</b> <b>\u25b6</b> &mdash; runs the neural style transfer on your photo. "
+            "The result appears on the right side of the split view. Drag the divider to compare "
+            "before and after.</li>"
+            "<li><b>Save</b> <b>\U0001f4be</b> &mdash; saves the styled result to disk.</li>"
+            "</ol>"
+            "<br>"
+            "<b>Strength slider (0 \u2013 300%)</b><br>"
+            "Controls how strongly the style is blended into your photo.<br>"
+            "&nbsp;&nbsp;\u2022 <b>0%</b> = original photo, no style applied.<br>"
+            "&nbsp;&nbsp;\u2022 <b>100%</b> = full style as produced by the model (natural reference point).<br>"
+            "&nbsp;&nbsp;\u2022 <b>&gt;100%</b> = style is extrapolated beyond the model output &mdash; "
+            "colours and textures become more intense.<br>"
+            "Release the slider to re-run the current step with the new value. "
+            "Only the right-pane result is updated; the left pane stays unchanged for comparison.<br><br>"
+            "<b>Re-Apply \u23e9 &mdash; chaining styles</b><br>"
+            "After a first Apply you can select a <i>different</i> style and click Re-Apply. "
+            "This uses the current styled result as the new input, painting a second style "
+            "on top of the first. You can chain as many styles as you like.<br>"
+            "The left pane automatically switches to show the previous result so you can "
+            "compare each step.<br><br>"
+            "<b>Undo \u21a9</b><br>"
+            "Steps back through the last three Apply / Re-Apply operations. "
+            "Strength slider adjustments are <i>not</i> counted as separate undo steps.<br><br>"
+            "<b>Reset \u21ba</b><br>"
+            "Reloads the original photo and discards all style filters, returning the canvas "
+            "to its initial state.",
+        )
 
     def _show_about_nst(self) -> None:
         self._show_link_dialog(
