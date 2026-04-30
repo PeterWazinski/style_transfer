@@ -24,12 +24,17 @@ from PySide6.QtGui import (
     QColor, QCursor, QPainter, QPen, QPixmap,
 )
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
+
+# Compact style applied to every toolbar button: reduces padding so the button
+# is roughly 30 % smaller than the Qt default without clipping symbol glyphs.
+_BTN_STYLE: str = "QPushButton { padding: 2px 7px; font-size: 14px; }"
 
 from src.stylist.widgets.strength_slider import StrengthSlider
 
@@ -204,11 +209,19 @@ class PhotoCanvasView(QWidget):
         self.reset_button.setToolTip("Reset \u2014 discard all style filters")
         self.save_button.setEnabled(False)
         self.save_button.setToolTip("Save Result (Ctrl+S)")
+        for _btn in (self.open_button, self.reset_button, self.save_button):
+            _btn.setStyleSheet(_BTN_STYLE)
         ctrl.addWidget(self.open_button)
         ctrl.addWidget(self.reset_button)
         ctrl.addWidget(self.save_button)
 
-        ctrl.addSpacing(24)  # visual gap between groups
+        # Visual separator between the two button groups
+        ctrl.addSpacing(6)
+        _sep = QFrame(self)
+        _sep.setFrameShape(QFrame.Shape.VLine)
+        _sep.setFrameShadow(QFrame.Shadow.Sunken)
+        ctrl.addWidget(_sep)
+        ctrl.addSpacing(6)
 
         # Right group: ▶ | ⏩ | ↩
         self.apply_button = QPushButton("\u25b6", self)
@@ -220,6 +233,8 @@ class PhotoCanvasView(QWidget):
         self.apply_button.setEnabled(False)
         self.reapply_button.setEnabled(False)
         self.undo_button.setEnabled(False)
+        for _btn in (self.apply_button, self.reapply_button, self.undo_button):
+            _btn.setStyleSheet(_BTN_STYLE)
         ctrl.addWidget(self.apply_button)
         ctrl.addWidget(self.reapply_button)
         ctrl.addWidget(self.undo_button)
