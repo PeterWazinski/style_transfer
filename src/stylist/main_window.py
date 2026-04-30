@@ -21,6 +21,7 @@ import logging
 import sys
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +48,7 @@ from src.core.engine import StyleTransferEngine
 from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.registry import StyleRegistry
+from src.core.replay_schema import load_replay_log
 from src.core.settings import AppSettings
 from src.stylist.apply_worker import ApplyWorker, is_gpu_crash as _is_gpu_crash
 from src.stylist.photo_canvas import PhotoCanvasView
@@ -101,6 +103,8 @@ class MainWindow(QMainWindow):
         self._styled_photo_input: Optional[PILImage] = None  # source that produced _styled_photo
         self._left_pane_pil: Optional[PILImage] = None       # PIL mirror of left pane for undo
         self._undo_stack: deque[_UndoSnapshot] = deque(maxlen=3)
+        self._current_style_name: str = ""                   # display name of selected style
+        self._replay_log: list[dict[str, object]] = []       # {"style": str, "strength": int}
 
         self.setWindowTitle("Peter's Picture Stylist")
         self.resize(1200, 750)
@@ -152,6 +156,16 @@ class MainWindow(QMainWindow):
         self._save_action.triggered.connect(self._save_result)
         file_menu.addAction(self._save_action)
 
+        self._replay_copy_action = QAction("Replay Log to Clipboard", self)
+        self._replay_copy_action.setStatusTip("Copy the current style chain as YAML to the clipboard")
+        self._replay_copy_action.triggered.connect(self._copy_replay_log_to_clipboard)
+        file_menu.addAction(self._replay_copy_action)
+
+        self._replay_load_action = QAction("Load Replay Log\u2026", self)
+        self._replay_load_action.setStatusTip("Load a .yml style chain and apply it to the current photo")
+        self._replay_load_action.triggered.connect(self._load_and_apply_replay_log)
+        file_menu.addAction(self._replay_load_action)
+
         file_menu.addSeparator()
         settings_action = QAction("Settings\u2026", self)
         settings_action.setShortcut("Ctrl+,")
@@ -202,6 +216,7 @@ class MainWindow(QMainWindow):
 
     def _on_style_selected(self, style: StyleModel) -> None:
         self.canvas.set_active_style(style.id)
+        self._current_style_name = style.name
         self._status.showMessage(f"Style selected: {style.name}")
         # Preload ONNX if not already loaded
         if not self._engine.is_loaded(style.id):
@@ -250,6 +265,7 @@ class MainWindow(QMainWindow):
         self._styled_photo_input = None
         self._left_pane_pil = image
         self._clear_undo_stack()
+        self._replay_log = []
         self.canvas.reset_styled()
         self._save_action.setEnabled(False)
         self.canvas.set_original(self._pil_to_pixmap(image))
@@ -284,6 +300,7 @@ class MainWindow(QMainWindow):
         self._styled_photo_input = None
         self._left_pane_pil = image
         self._clear_undo_stack()
+        self._replay_log = []
         self.canvas.reset_styled()         # reset right pane + disable Re-Apply/Save
         self._save_action.setEnabled(False)
         # Convert PIL Image → QPixmap for display
@@ -417,6 +434,9 @@ class MainWindow(QMainWindow):
         self._styled_photo = snap.styled_photo
         self._styled_photo_input = snap.styled_photo_input
         self._left_pane_pil = snap.left_pane_pil
+        # Pop matching replay log entry
+        if self._replay_log:
+            self._replay_log.pop()
         # Restore left pane
         left_pil = snap.left_pane_pil if snap.left_pane_pil is not None else self._current_photo
         if left_pil is not None:
@@ -457,6 +477,8 @@ class MainWindow(QMainWindow):
             return
         # Push undo snapshot before overwriting state
         self._push_undo_snapshot()
+        # Append to replay log
+        self._replay_log.append({"style": self._current_style_name, "strength": int(strength * 100)})
         # Show the previous styled result on the left for comparison
         self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(source_photo))
         self._left_pane_pil = source_photo        # update PIL mirror of left pane
@@ -496,6 +518,9 @@ class MainWindow(QMainWindow):
             return
         # Keep the left pane unchanged — only update the right pane & buffer
         self._styled_photo = result
+        # Update the last replay log entry with the new strength
+        if self._replay_log:
+            self._replay_log[-1]["strength"] = int(strength * 100)
         self.canvas.set_styled(self._pil_to_pixmap(result))
         self._save_action.setEnabled(True)
         self._status.showMessage("Strength adjusted.")
@@ -518,6 +543,8 @@ class MainWindow(QMainWindow):
             return
         # Push undo snapshot before overwriting state
         self._push_undo_snapshot()
+        # Apply always starts a new chain from the original photo
+        self._replay_log = [{"style": self._current_style_name, "strength": int(strength * 100)}]
         self._styled_photo_input = self._current_photo   # record what fed this result
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
@@ -544,7 +571,103 @@ class MainWindow(QMainWindow):
             return
         self._settings.last_save_dir = str(path.parent)
         self._settings.save()
-        self._status.showMessage(f"Saved to: {path.name}")
+        # Auto-save replay log alongside the image if enabled and log is non-empty
+        if self._settings.autosave_replay_log and self._replay_log:
+            yml_path = path.with_suffix(".yml")
+            try:
+                yml_path.write_text(self._format_replay_log(), encoding="utf-8")
+                self._status.showMessage(f"Saved to: {path.name}  (+ replay log)")
+            except OSError as exc:
+                logger.warning("Could not auto-save replay log: %s", exc)
+                self._status.showMessage(f"Saved to: {path.name}")
+        else:
+            self._status.showMessage(f"Saved to: {path.name}")
+
+    # ------------------------------------------------------------------
+    # Replay log
+    # ------------------------------------------------------------------
+
+    def _format_replay_log(self) -> str:
+        """Serialise the current replay log to a YAML string."""
+        import yaml  # lazy — only needed when user requests clipboard / autosave
+        header = (
+            f"# PetersPictureStyler \u2013 style chain\n"
+            f"# Created: {datetime.now():%Y-%m-%d %H:%M}\n"
+        )
+        data = {"version": 1, "steps": list(self._replay_log)}
+        return header + yaml.dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+    def _copy_replay_log_to_clipboard(self) -> None:
+        if not self._replay_log:
+            QMessageBox.information(self, "Replay Log", "No styles applied yet \u2014 nothing to copy.")
+            return
+        QApplication.clipboard().setText(self._format_replay_log())
+        self._status.showMessage("Replay log copied to clipboard.")
+
+    def _resolve_style_id_by_name(self, style_name: str) -> str | None:
+        """Return the style id for the given display name (case-insensitive), or None."""
+        needle = style_name.casefold()
+        for style in self._registry.list_styles():
+            if style.name.casefold() == needle:
+                return style.id
+        return None
+
+    def _load_and_apply_replay_log(self) -> None:
+        if self._current_photo is None:
+            QMessageBox.information(self, "Load Replay Log", "Open a photo first.")
+            return
+        path_str, _ = QFileDialog.getOpenFileName(
+            self, "Load Replay Log", "", "YAML style chain (*.yml *.yaml)"
+        )
+        if not path_str:
+            return
+        try:
+            replay = load_replay_log(Path(path_str))
+        except ValueError as exc:
+            QMessageBox.critical(self, "Invalid Replay Log", str(exc))
+            return
+        # Reset image state, then apply each step in sequence
+        self._styled_photo = None
+        self._styled_photo_input = None
+        self._clear_undo_stack()
+        self._replay_log = []
+        self.canvas.reset_styled()
+        self._save_action.setEnabled(False)
+        self.canvas.set_original(self._pil_to_pixmap(self._current_photo))
+        for i, step in enumerate(replay.steps):
+            style_id = self._resolve_style_id_by_name(step.style)
+            if style_id is None:
+                QMessageBox.warning(
+                    self, "Load Replay Log",
+                    f"Style \u2018{step.style}\u2019 not found in catalog \u2014 "
+                    f"chain aborted at step {i + 1}."
+                )
+                return
+            # Load model if needed
+            self._current_style_name = step.style
+            if not self._engine.is_loaded(style_id):
+                project_root: Path = (
+                    Path(sys.executable).parent
+                    if getattr(sys, "frozen", False)
+                    else Path(__file__).parent.parent.parent
+                )
+                if style_id in self._registry:
+                    style_obj = self._registry.get(style_id)
+                    try:
+                        self._engine.load_model(
+                            style_id,
+                            style_obj.model_path_resolved(project_root),
+                            tensor_layout=style_obj.tensor_layout,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        QMessageBox.critical(self, "Load Replay Log",
+                            f"Could not load model for \u2018{step.style}\u2019: {exc}")
+                        return
+            if i == 0:
+                self._apply_style(style_id, step.strength / 100.0)
+            else:
+                self._reapply_style(style_id, step.strength / 100.0)
+        self._status.showMessage(f"Replay log applied: {Path(path_str).name}")
 
     def _show_link_dialog(self, title: str, html: str) -> None:
         """Show an informational dialog that supports clickable hyperlinks."""

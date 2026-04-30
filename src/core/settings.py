@@ -55,6 +55,7 @@ class AppSettings:
     max_megapixels: float = 20.0  # 0.0 = no limit
     last_open_dir: str = ""
     last_save_dir: str = ""
+    autosave_replay_log: bool = True  # write .yml alongside saved image
 
     # ------------------------------------------------------------------
     # Validation

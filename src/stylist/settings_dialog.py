@@ -145,6 +145,16 @@ class SettingsDialog(QDialog):
             "Reduces VRAM usage and speeds up rendering. Has no effect on CPU-only runtimes."
         ))
 
+        # --- Autosave replay log ---
+        self.autosave_replay_check = QCheckBox(
+            "Autosave replay log (.yml) when saving image", self
+        )
+        form.addRow("", self.autosave_replay_check)
+        form.addRow("", self._hint(
+            "Writes a YAML style-chain file next to every saved image so you can "
+            "replay the same sequence later with BatchStyler --replay."
+        ))
+
         # --- Max megapixels ---
         self.max_mp_combo = QComboBox(self)
         _MP_LABELS: dict[float, str] = {
@@ -205,6 +215,9 @@ class SettingsDialog(QDialog):
         # Float16
         self.float16_check.setChecked(settings.use_float16)
 
+        # Autosave replay log
+        self.autosave_replay_check.setChecked(settings.autosave_replay_log)
+
         # Max megapixels
         idx = self.max_mp_combo.findData(settings.max_megapixels)
         if idx >= 0:
@@ -223,6 +236,7 @@ class SettingsDialog(QDialog):
             execution_provider=self.provider_combo.currentData(),
             use_float16=self.float16_check.isChecked(),
             max_megapixels=self.max_mp_combo.currentData(),
+            autosave_replay_log=self.autosave_replay_check.isChecked(),
         )
 
     # ------------------------------------------------------------------
