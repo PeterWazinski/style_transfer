@@ -168,6 +168,7 @@ class PhotoCanvasView(QWidget):
     reapply_requested: Signal = Signal(str, float)
     reapply_strength_requested: Signal = Signal(str, float)  # slider: re-run same step, no chain advance
     save_requested: Signal = Signal()
+    undo_requested: Signal = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -194,30 +195,34 @@ class PhotoCanvasView(QWidget):
         ctrl.addWidget(self.strength_slider)
         ctrl.addStretch()
 
-        # Left group: Open Photo | Reset | Save Result
-        self.open_button = QPushButton("Open Photo", self)
-        self.reset_button = QPushButton("Reset", self)
-        self.save_button = QPushButton("Save Result", self)
+        # Left group: 📂 | ↺ | 💾
+        self.open_button = QPushButton("\U0001f4c2", self)
+        self.open_button.setToolTip("Open Photo (Ctrl+O)")
+        self.reset_button = QPushButton("\u21ba", self)
+        self.save_button = QPushButton("\U0001f4be", self)
         self.reset_button.setEnabled(False)
-        self.reset_button.setToolTip("Reload original photo and discard all style filters")
+        self.reset_button.setToolTip("Reset \u2014 discard all style filters")
         self.save_button.setEnabled(False)
+        self.save_button.setToolTip("Save Result (Ctrl+S)")
         ctrl.addWidget(self.open_button)
         ctrl.addWidget(self.reset_button)
         ctrl.addWidget(self.save_button)
 
         ctrl.addSpacing(24)  # visual gap between groups
 
-        # Right group: Apply | Re-Apply
-        self.apply_button = QPushButton("Apply", self)
-        self.reapply_button = QPushButton("Re-Apply", self)
+        # Right group: ▶ | ⏩ | ↩
+        self.apply_button = QPushButton("\u25b6", self)
+        self.apply_button.setToolTip("Apply selected style to photo")
+        self.reapply_button = QPushButton("\u23e9", self)
+        self.reapply_button.setToolTip("Stack style on top of current result")
+        self.undo_button = QPushButton("\u21a9", self)
+        self.undo_button.setToolTip("Undo last apply step")
         self.apply_button.setEnabled(False)
         self.reapply_button.setEnabled(False)
-        self.reapply_button.setToolTip(
-            "Apply the selected style to the already-styled result\n"
-            "(chain multiple styles on top of each other)"
-        )
+        self.undo_button.setEnabled(False)
         ctrl.addWidget(self.apply_button)
         ctrl.addWidget(self.reapply_button)
+        ctrl.addWidget(self.undo_button)
         root.addLayout(ctrl)
 
         # Connections
@@ -225,6 +230,7 @@ class PhotoCanvasView(QWidget):
         self.reset_button.clicked.connect(self.reset_requested)
         self.apply_button.clicked.connect(self._on_apply_clicked)
         self.reapply_button.clicked.connect(self._on_reapply_clicked)
+        self.undo_button.clicked.connect(self.undo_requested)
         self.save_button.clicked.connect(self.save_requested)
         self.strength_slider.released.connect(self._on_strength_released)
 
@@ -280,6 +286,10 @@ class PhotoCanvasView(QWidget):
     def has_styled(self) -> bool:
         """Return *True* if a styled result has been set."""
         return self._has_styled
+
+    def set_undo_available(self, available: bool) -> None:
+        """Enable or disable the Undo button."""
+        self.undo_button.setEnabled(available)
 
     # ------------------------------------------------------------------
     # Slots

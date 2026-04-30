@@ -300,3 +300,19 @@ class TestResetStyled:
         assert apply_received == [], "Slider must NOT emit apply_requested when no styled result"
         assert reapply_received == [], "Slider must NOT emit reapply_requested"
         assert strength_received == [], "Slider must NOT emit reapply_strength_requested"
+
+
+# ---------------------------------------------------------------------------
+# Undo button
+# ---------------------------------------------------------------------------
+
+class TestUndoButton:
+    def test_undo_button_starts_disabled(self, canvas: PhotoCanvasView) -> None:
+        assert not canvas.undo_button.isEnabled()
+
+    def test_undo_requested_signal_emitted_on_click(
+        self, qtbot, canvas: PhotoCanvasView
+    ) -> None:
+        canvas.set_undo_available(True)
+        with qtbot.waitSignal(canvas.undo_requested, timeout=300):
+            canvas.undo_button.click()

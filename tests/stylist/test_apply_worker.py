@@ -402,3 +402,86 @@ class TestAllThreeApplyPaths:
 
         assert len(captured) == 1
         assert np.array_equal(np.array(captured[0]), np.array(expected_input))
+
+
+# ---------------------------------------------------------------------------
+# Undo stack
+# ---------------------------------------------------------------------------
+
+class TestUndoStack:
+    def test_undo_button_disabled_initially(
+        self, qtbot, tmp_path: Path
+    ) -> None:
+        window, _ = _make_e2e_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        assert not window.canvas.undo_button.isEnabled()
+
+    def test_undo_button_enabled_after_apply(
+        self, qtbot, tmp_path: Path
+    ) -> None:
+        window, _ = _make_e2e_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        window._apply_style("w-style", 1.0)
+        assert window.canvas.undo_button.isEnabled()
+
+    def test_undo_after_apply_clears_styled_state(
+        self, qtbot, tmp_path: Path
+    ) -> None:
+        window, _ = _make_e2e_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        window._apply_style("w-style", 1.0)
+        assert window._styled_photo is not None
+        window._perform_undo()
+        assert window._styled_photo is None
+        assert not window.canvas.has_styled()
+
+    def test_undo_after_reapply_restores_first_result(
+        self, qtbot, tmp_path: Path
+    ) -> None:
+        window, _ = _make_e2e_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        window._apply_style("w-style", 1.0)
+        first_result = window._styled_photo
+        window._reapply_style("w-style", 1.0)
+        window._perform_undo()
+        assert window._styled_photo is first_result
+
+    def test_undo_stack_capped_at_three(
+        self, qtbot, tmp_path: Path
+    ) -> None:
+        """After 4 applies only 3 undos are available; the 4th undo is a no-op."""
+        window, _ = _make_e2e_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        window._apply_style("w-style", 1.0)
+        window._reapply_style("w-style", 1.0)
+        window._reapply_style("w-style", 1.0)
+        window._reapply_style("w-style", 1.0)  # 4th: oldest slot drops off
+        window._perform_undo()
+        window._perform_undo()
+        window._perform_undo()
+        assert not window.canvas.undo_button.isEnabled()
+
+    def test_undo_button_disabled_after_open_photo(
+        self, qtbot, tmp_path: Path
+    ) -> None:
+        window, _ = _make_e2e_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        window._apply_style("w-style", 1.0)
+        assert window.canvas.undo_button.isEnabled()
+        _load_photo(window, tmp_path)
+        assert not window.canvas.undo_button.isEnabled()
+
+    def test_undo_does_not_reenable_apply_after_gpu_crash(
+        self, qtbot, tmp_path: Path
+    ) -> None:
+        """Undo must not re-enable Apply if the GPU crash handler disabled it."""
+        window, engine = _make_e2e_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        window._apply_style("w-style", 1.0)
+        # Simulate GPU crash disabling the buttons
+        window.canvas.apply_button.setEnabled(False)
+        window.canvas.reapply_button.setEnabled(False)
+        window._perform_undo()
+        # Undo restores image state but must NOT re-enable the crashed buttons
+        assert not window.canvas.apply_button.isEnabled()
+        assert not window.canvas.reapply_button.isEnabled()

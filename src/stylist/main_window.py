@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +56,16 @@ from src.stylist.style_gallery import StyleGalleryView
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+@dataclass
+class _UndoSnapshot:
+    """State captured before each Apply / Re-Apply so the operation can be undone."""
+
+    styled_photo: Optional["PILImage"]
+    styled_photo_input: Optional["PILImage"]
+    left_pane_pil: Optional["PILImage"]
+    has_styled: bool
+
+
 class MainWindow(QMainWindow):
     """Top-level application window.
 
@@ -87,6 +99,8 @@ class MainWindow(QMainWindow):
         self._current_photo_path: Optional[Path] = None
         self._styled_photo: Optional[PILImage] = None
         self._styled_photo_input: Optional[PILImage] = None  # source that produced _styled_photo
+        self._left_pane_pil: Optional[PILImage] = None       # PIL mirror of left pane for undo
+        self._undo_stack: deque[_UndoSnapshot] = deque(maxlen=3)
 
         self.setWindowTitle("Peter's Picture Stylist")
         self.resize(1200, 750)
@@ -175,6 +189,7 @@ class MainWindow(QMainWindow):
         self.canvas.reapply_requested.connect(self._reapply_style)
         self.canvas.reapply_strength_requested.connect(self._reapply_style_strength)
         self.canvas.save_requested.connect(self._save_result)
+        self.canvas.undo_requested.connect(self._perform_undo)
 
     # ------------------------------------------------------------------
     # Slots
@@ -228,6 +243,8 @@ class MainWindow(QMainWindow):
         self._current_photo = image
         self._styled_photo = None
         self._styled_photo_input = None
+        self._left_pane_pil = image
+        self._clear_undo_stack()
         self.canvas.reset_styled()
         self._save_action.setEnabled(False)
         self.canvas.set_original(self._pil_to_pixmap(image))
@@ -260,6 +277,8 @@ class MainWindow(QMainWindow):
         self._current_photo_path = path
         self._styled_photo = None          # clear any previous styled result
         self._styled_photo_input = None
+        self._left_pane_pil = image
+        self._clear_undo_stack()
         self.canvas.reset_styled()         # reset right pane + disable Re-Apply/Save
         self._save_action.setEnabled(False)
         # Convert PIL Image → QPixmap for display
@@ -367,6 +386,47 @@ class MainWindow(QMainWindow):
         return result_holder[0]
 
     # ------------------------------------------------------------------
+    # Undo stack
+    # ------------------------------------------------------------------
+
+    def _push_undo_snapshot(self) -> None:
+        """Capture current state onto the undo stack and enable the Undo button."""
+        self._undo_stack.append(_UndoSnapshot(
+            styled_photo=self._styled_photo,
+            styled_photo_input=self._styled_photo_input,
+            left_pane_pil=self._left_pane_pil,
+            has_styled=self.canvas.has_styled(),
+        ))
+        self.canvas.set_undo_available(True)
+
+    def _clear_undo_stack(self) -> None:
+        """Discard all undo history and disable the Undo button."""
+        self._undo_stack.clear()
+        self.canvas.set_undo_available(False)
+
+    def _perform_undo(self) -> None:
+        """Pop the top snapshot and restore the canvas to that state."""
+        if not self._undo_stack:
+            return
+        snap = self._undo_stack.pop()
+        self._styled_photo = snap.styled_photo
+        self._styled_photo_input = snap.styled_photo_input
+        self._left_pane_pil = snap.left_pane_pil
+        # Restore left pane
+        left_pil = snap.left_pane_pil if snap.left_pane_pil is not None else self._current_photo
+        if left_pil is not None:
+            self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(left_pil))
+        # Restore right pane
+        if snap.has_styled and snap.styled_photo is not None:
+            self.canvas.set_styled(self._pil_to_pixmap(snap.styled_photo))
+            self._save_action.setEnabled(True)
+        else:
+            self.canvas.reset_styled()
+            self._save_action.setEnabled(False)
+        self.canvas.set_undo_available(len(self._undo_stack) > 0)
+        self._status.showMessage("Undo.")
+
+    # ------------------------------------------------------------------
     # Apply / Re-Apply
     # ------------------------------------------------------------------
 
@@ -390,8 +450,11 @@ class MainWindow(QMainWindow):
         if result is None:
             self._status.showMessage("Re-apply cancelled." if dlg.wasCanceled() else "Error during style transfer.")
             return
+        # Push undo snapshot before overwriting state
+        self._push_undo_snapshot()
         # Show the previous styled result on the left for comparison
         self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(source_photo))
+        self._left_pane_pil = source_photo        # update PIL mirror of left pane
         self._styled_photo_input = source_photo   # the input to this new chain step
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
@@ -448,6 +511,8 @@ class MainWindow(QMainWindow):
         if result is None:
             self._status.showMessage("Apply cancelled." if dlg.wasCanceled() else "Error during style transfer.")
             return
+        # Push undo snapshot before overwriting state
+        self._push_undo_snapshot()
         self._styled_photo_input = self._current_photo   # record what fed this result
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))
