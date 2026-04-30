@@ -125,7 +125,7 @@
     {
       "id": "style_monet",
       "name": "Monet",
-      "description": "Impressionist painting style — Claude Monet",
+      "description": "Impressionist painting style \u2014 Claude Monet",
       "author": "junyanz/CycleGAN (MIT License)",
       "model_path": "styles/style_monet/model.onnx",
       "preview_path": "styles/style_monet/preview.jpg",
@@ -135,7 +135,7 @@
     {
       "id": "style_vangogh",
       "name": "Van Gogh",
-      "description": "Post-impressionist style — Vincent van Gogh",
+      "description": "Post-impressionist style \u2014 Vincent van Gogh",
       "author": "junyanz/CycleGAN (MIT License)",
       "model_path": "styles/style_vangogh/model.onnx",
       "preview_path": "styles/style_vangogh/preview.jpg",
@@ -144,8 +144,8 @@
     },
     {
       "id": "style_cezanne",
-      "name": "Cézanne",
-      "description": "Post-impressionist style — Paul Cézanne",
+      "name": "C\u00e9zanne",
+      "description": "Post-impressionist style \u2014 Paul C\u00e9zanne",
       "author": "junyanz/CycleGAN (MIT License)",
       "model_path": "styles/style_cezanne/model.onnx",
       "preview_path": "styles/style_cezanne/preview.jpg",
@@ -161,6 +161,16 @@
       "preview_path": "styles/style_ukiyoe/preview.jpg",
       "tensor_layout": "nchw_tanh",
       "is_builtin": true
+    },
+    {
+      "id": "cubism",
+      "name": "Cubism",
+      "description": "Cubism Picasso Gris Leger ",
+      "author": "PeterWazinski",
+      "model_path": "styles/cubism/model.onnx",
+      "preview_path": "styles/cubism/preview.jpg",
+      "is_builtin": false,
+      "tensor_layout": "nchw"
     }
   ]
 }
