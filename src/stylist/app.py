@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QApplication
 from src.core.engine import StyleTransferEngine
 from src.core.photo_manager import PhotoManager
 from src.core.registry import StyleRegistry
-from src.core.settings import AppSettings
+from src.core.settings import AppSettings, DEFAULT_TILE_SIZE, DEFAULT_OVERLAP
 from src.stylist.main_window import MainWindow
 
 
@@ -124,6 +124,10 @@ def main() -> int:
     app.setWindowIcon(_make_palette_icon())
 
     settings = AppSettings.load()
+    # Always reset tile settings to defaults on startup — prevents a previous
+    # low/high tile configuration from causing unexpected crashes or slow runs.
+    settings.tile_size = DEFAULT_TILE_SIZE
+    settings.overlap = DEFAULT_OVERLAP
     registry = StyleRegistry(catalog_path=_CATALOG_PATH)
     engine = StyleTransferEngine(execution_provider=settings.execution_provider)
     photo_manager = PhotoManager()

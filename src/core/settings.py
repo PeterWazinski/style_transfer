@@ -20,8 +20,12 @@ _DEFAULT_SETTINGS_PATH: Path = Path.home() / ".style_transfer" / "settings.json"
 PROVIDER_CHOICES: tuple[str, ...] = ("auto", "cpu", "dml", "cuda")
 # Valid tile-size choices (pixels).
 TILE_SIZE_CHOICES: tuple[int, ...] = (512, 768, 1024, 2048)
+# Default tile size — reset to this on every app startup.
+DEFAULT_TILE_SIZE: int = 1024
 # Valid overlap choices (pixels).
 OVERLAP_CHOICES: tuple[int, ...] = (32, 64, 128, 192, 256)
+# Default overlap — reset to this on every app startup.
+DEFAULT_OVERLAP: int = 128
 # Max-megapixel choices shown in the Settings dialog.
 # 0.0 = no limit.
 MAX_MP_CHOICES: tuple[float, ...] = (8.0, 12.0, 20.0, 40.0, 0.0)

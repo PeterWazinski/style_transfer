@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.settings import (
+    DEFAULT_OVERLAP,
+    DEFAULT_TILE_SIZE,
     MAX_MP_CHOICES,
     OVERLAP_CHOICES,
     PROVIDER_CHOICES,
@@ -85,7 +87,8 @@ class SettingsDialog(QDialog):
         # --- Tile size ---
         self.tile_size_combo = QComboBox(self)
         for v in TILE_SIZE_CHOICES:
-            self.tile_size_combo.addItem(f"{v} px", v)
+            label = f"{v} px (default)" if v == DEFAULT_TILE_SIZE else f"{v} px"
+            self.tile_size_combo.addItem(label, v)
         form.addRow("Tile size:", self.tile_size_combo)
         form.addRow("", self._hint(
             "Large photos are split into tiles of this size before processing. "
@@ -95,7 +98,8 @@ class SettingsDialog(QDialog):
         # --- Overlap ---
         self.overlap_combo = QComboBox(self)
         for v in OVERLAP_CHOICES:
-            self.overlap_combo.addItem(f"{v} px", v)
+            label = f"{v} px (default)" if v == DEFAULT_OVERLAP else f"{v} px"
+            self.overlap_combo.addItem(label, v)
         form.addRow("Tile overlap:", self.overlap_combo)
         form.addRow("", self._hint(
             "Adjacent tiles overlap by this many pixels to hide stitching artefacts. "
