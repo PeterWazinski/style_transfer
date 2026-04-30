@@ -119,7 +119,7 @@ class TestInvalidStrength:
         engine = _engine_with_mock_style()
         img = Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8))
         with pytest.raises(ValueError, match="strength"):
-            engine.apply(img, "test-style", strength=1.5)
+            engine.apply(img, "test-style", strength=3.1)
 
     def test_strength_below_zero_raises(self) -> None:
         engine = _engine_with_mock_style()
