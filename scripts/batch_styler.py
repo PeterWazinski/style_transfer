@@ -237,6 +237,7 @@ def cmd_pdfoverview(
     overlap: int,
     strength: float,  # noqa: ARG001 — ignored; pdfoverview uses PDF_STRENGTHS
     use_float16: bool,
+    out_dir: Path | None = None,
 ) -> None:
     """Apply all styles at each PDF_STRENGTHS level and write a DIN-A4-landscape PDF.
 
@@ -306,7 +307,8 @@ def cmd_pdfoverview(
     for i in range(0, len(cells), CELLS_PER_PAGE):
         pages.append(_make_page(cells[i : i + CELLS_PER_PAGE], font))
 
-    pdf_path = image_path.parent / (image_path.stem + "_thumbnails.pdf")
+    dir_out = out_dir if out_dir is not None else image_path.parent
+    pdf_path = dir_out / (image_path.stem + "_thumbnails.pdf")
     pages[0].save(
         pdf_path,
         format="PDF",
@@ -333,6 +335,7 @@ def cmd_replay(
     overlap: int | None,
     use_float16: bool,
     strength_override: int | None = None,
+    out_dir: Path | None = None,
 ) -> None:
     """Apply a saved style-chain YAML to *image_path*, step by step."""
     from src.core.replay_schema import load_replay_log  # noqa: PLC0415
@@ -385,7 +388,12 @@ def cmd_replay(
         )
         engine._sessions.pop(catalog_style["id"], None)  # noqa: SLF001
 
-    out_path = image_path.parent / f"{image_path.stem}_{replay_path.stem}.jpg"
+    dir_out = out_dir if out_dir is not None else image_path.parent
+    if strength_override is not None:
+        fname = f"{image_path.stem}_{replay_path.stem}_{strength_override}.jpg"
+    else:
+        fname = f"{image_path.stem}_{replay_path.stem}.jpg"
+    out_path = dir_out / fname
     result.save(out_path, format="JPEG", quality=92)
     print(f"\nOK  Result written: {out_path}")
 
@@ -415,19 +423,23 @@ Options for --pdfoverview:
                          Aborts with an error if the name is not in the catalog.
 
 Options for --replay:
-  --strength-override N  Scale every step's strength by N percent (integer).
+  --strength-override N  Scale every step's strength by N percent (0–300).
                          E.g. --strength-override 60 turns 150% → 90%.
+                         Output filename gets a _<N> suffix, e.g. photo_chain_60.jpg.
 
 Common options:
   --tile-size N  Tile size for ONNX inference in pixels (default: 1024)
   --overlap N    Tile overlap in pixels (default: 128)
   --float16      Enable float16 inference (faster on GPU/DML)
+  --outdir DIR   Write output file(s) to DIR instead of the source image folder.
+                 DIR must already exist.
 
 Examples:
   batch_styler.exe --pdfoverview photos\portrait.jpg
   batch_styler.exe --pdfoverview photos\portrait.jpg --style "Anime Hayao"
   batch_styler.exe --replay my_chain.yml photos\portrait.jpg
   batch_styler.exe --replay my_chain.yml photos\portrait.jpg --strength-override 60
+  batch_styler.exe --replay my_chain.yml photos\portrait.jpg --strength-override 80 --outdir C:\output
 """
 
 
@@ -456,7 +468,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--strength-override", type=int, default=None, metavar="PCT",
-        help="Scale all replay step strengths by this percentage. Only used with --replay.",
+        help="Scale all replay step strengths by this percentage (0–300). Only used with --replay.",
     )
     parser.add_argument(
         "--float16", action="store_true", default=False,
@@ -465,6 +477,10 @@ def main() -> None:
     parser.add_argument(
         "--style", type=str, default=None, metavar="NAME",
         help="Apply only this style (case-insensitive name). Aborts if not found.",
+    )
+    parser.add_argument(
+        "--outdir", type=Path, default=None, metavar="DIR",
+        help="Write output file(s) to DIR instead of the source image folder. DIR must already exist.",
     )
     args = parser.parse_args()
 
@@ -476,6 +492,17 @@ def main() -> None:
     if not image_path.exists():
         sys.exit(f"Error: image not found: {image_path}")
 
+    # Validate --outdir
+    out_dir: Path | None = None
+    if args.outdir is not None:
+        out_dir = args.outdir.resolve()
+        if not out_dir.is_dir():
+            sys.exit(f"Error: --outdir directory does not exist: {out_dir}")
+
+    # Validate --strength-override range
+    if args.strength_override is not None and not (0 <= args.strength_override <= 300):
+        sys.exit("Error: --strength-override must be between 0 and 300.")
+
     if args.replay:
         cmd_replay(
             image_path, args.replay.resolve(),
@@ -483,6 +510,7 @@ def main() -> None:
             overlap=args.overlap,
             use_float16=args.float16,
             strength_override=args.strength_override,
+            out_dir=out_dir,
         )
         return
 
@@ -514,6 +542,7 @@ def main() -> None:
         overlap=pdf_overlap,
         strength=1.0,
         use_float16=args.float16,
+        out_dir=out_dir,
     )
 
 

@@ -504,6 +504,75 @@ steps:
             assert call[1]["tile_size"] == 512   # CLI override
             assert call[1]["overlap"] == 32      # from YAML
 
+    def test_replay_outdir_writes_to_custom_dir(self, tmp_path: Path) -> None:
+        """Output JPEG must be placed in --outdir when specified."""
+        photo, chain, _ = self._setup(tmp_path, n_styles=2)
+        out_dir = tmp_path / "results"
+        out_dir.mkdir()
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(
+                photo, chain,
+                tile_size=256, overlap=64, use_float16=False,
+                out_dir=out_dir,
+            )
+
+        expected = out_dir / "photo_my_chain.jpg"
+        assert expected.exists(), "Output JPEG not found in --outdir"
+        # Must NOT be written next to the source image
+        assert not (tmp_path / "photo_my_chain.jpg").exists()
+
+    def test_replay_strength_override_adds_suffix_to_filename(self, tmp_path: Path) -> None:
+        """When --strength-override N is used the output filename must end with _<N>.jpg."""
+        photo, chain, _ = self._setup(tmp_path, n_styles=2)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(
+                photo, chain,
+                tile_size=256, overlap=64, use_float16=False,
+                strength_override=88,
+            )
+
+        expected = tmp_path / "photo_my_chain_88.jpg"
+        assert expected.exists(), "Output JPEG with strength suffix not found"
+        # Without override the plain name must NOT exist
+        assert not (tmp_path / "photo_my_chain.jpg").exists()
+
+    def test_replay_outdir_with_strength_suffix(self, tmp_path: Path) -> None:
+        """--outdir and --strength-override together: file goes to dir with suffix."""
+        photo, chain, _ = self._setup(tmp_path, n_styles=2)
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        mock_engine._sessions = {}
+
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_replay(
+                photo, chain,
+                tile_size=256, overlap=64, use_float16=False,
+                strength_override=75,
+                out_dir=out_dir,
+            )
+
+        expected = out_dir / "photo_my_chain_75.jpg"
+        assert expected.exists(), "Output JPEG with outdir + suffix not found"
+
 
 class _OldTestMainFullImage:
     def _setup_catalog(self, tmp_path: Path, n: int = 3) -> tuple[Path, list[dict]]:
