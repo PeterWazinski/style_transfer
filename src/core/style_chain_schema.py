@@ -1,8 +1,8 @@
-"""Replay log schema and loader.
+"""Style chain schema and loader.
 
-A replay log is a YAML file that records the sequence of style-transfer
-steps applied to a photo in the interactive app.  It can be replayed
-headlessly via ``BatchStyler --replay``.
+A style chain is a YAML file that records the sequence of style-transfer
+steps applied to a photo in the interactive app.  It can be re-applied
+headlessly via ``BatchStyler --apply-style-chain``.
 
 Example file::
 
@@ -56,8 +56,8 @@ class ReplayLog(BaseModel):
         return v
 
 
-def load_replay_log(path: Path) -> ReplayLog:
-    """Load and validate a replay YAML file.
+def load_style_chain(path: Path) -> ReplayLog:
+    """Load and validate a style chain YAML file.
 
     Args:
         path: Path to the ``.yml`` / ``.yaml`` file.

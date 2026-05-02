@@ -338,10 +338,10 @@ def cmd_replay(
     out_dir: Path | None = None,
 ) -> None:
     """Apply a saved style-chain YAML to *image_path*, step by step."""
-    from src.core.replay_schema import load_replay_log  # noqa: PLC0415
+    from src.core.style_chain_schema import load_style_chain  # noqa: PLC0415
 
     try:
-        replay = load_replay_log(replay_path)
+        replay = load_style_chain(replay_path)
     except ValueError as exc:
         sys.exit(f"Error: {exc}")
 

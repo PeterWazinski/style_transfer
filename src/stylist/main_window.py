@@ -48,7 +48,7 @@ from src.core.engine import StyleTransferEngine
 from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.registry import StyleRegistry
-from src.core.replay_schema import load_replay_log
+from src.core.style_chain_schema import load_style_chain
 from src.core.settings import AppSettings
 from src.stylist.apply_worker import ApplyWorker, is_gpu_crash as _is_gpu_crash
 from src.stylist.photo_canvas import PhotoCanvasView
@@ -628,7 +628,7 @@ class MainWindow(QMainWindow):
         if not path_str:
             return
         try:
-            replay = load_replay_log(Path(path_str))
+            replay = load_style_chain(Path(path_str))
         except ValueError as exc:
             QMessageBox.critical(self, "Invalid Replay Log", str(exc))
             return

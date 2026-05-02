@@ -1,4 +1,4 @@
-"""Tests for src/core/replay_schema.py — Phase 1."""
+"""Tests for src/core/style_chain_schema.py."""
 from __future__ import annotations
 
 import textwrap
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.replay_schema import ReplayLog, ReplayStep, load_replay_log
+from src.core.style_chain_schema import ReplayLog, ReplayStep, load_style_chain
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ class TestReplaySchema:
                 strength: 75
             """,
         )
-        replay = load_replay_log(yml)
+        replay = load_style_chain(yml)
         assert replay.version == 1
         assert replay.tile_size is None
         assert replay.tile_overlap is None
@@ -58,7 +58,7 @@ class TestReplaySchema:
                 strength: 100
             """,
         )
-        replay = load_replay_log(yml)
+        replay = load_style_chain(yml)
         assert replay.tile_size == 512
         assert replay.tile_overlap == 64
 
@@ -66,7 +66,7 @@ class TestReplaySchema:
         """A YAML file without a ``steps`` key raises ValueError."""
         yml = _write_yaml(tmp_path, "version: 1\n")
         with pytest.raises(ValueError, match="steps"):
-            load_replay_log(yml)
+            load_style_chain(yml)
 
     def test_empty_steps_raises(self, tmp_path: Path) -> None:
         """An empty ``steps`` list raises ValueError."""
@@ -78,7 +78,7 @@ class TestReplaySchema:
             """,
         )
         with pytest.raises(ValueError):
-            load_replay_log(yml)
+            load_style_chain(yml)
 
     def test_strength_out_of_range_raises(self, tmp_path: Path) -> None:
         """Strength values outside 1–300 raise ValueError."""
@@ -92,12 +92,12 @@ class TestReplaySchema:
             """,
         )
         with pytest.raises(ValueError):
-            load_replay_log(yml_high)
+            load_style_chain(yml_high)
 
         yml_low = tmp_path / "low.yml"
         yml_low.write_text("version: 1\nsteps:\n  - style: Test\n    strength: 0\n", encoding="utf-8")
         with pytest.raises(ValueError):
-            load_replay_log(yml_low)
+            load_style_chain(yml_low)
 
     def test_unknown_version_raises(self, tmp_path: Path) -> None:
         """A ``version`` other than 1 raises ValueError with a clear message."""
@@ -111,11 +111,11 @@ class TestReplaySchema:
             """,
         )
         with pytest.raises(ValueError, match="[Uu]nsupported.*version"):
-            load_replay_log(yml)
+            load_style_chain(yml)
 
     def test_yaml_syntax_error_raises_valueerror(self, tmp_path: Path) -> None:
         """A malformed YAML file raises ValueError with a human-readable message."""
         bad = tmp_path / "bad.yml"
         bad.write_text("version: 1\nsteps: [\n  unclosed bracket\n", encoding="utf-8")
         with pytest.raises(ValueError, match="YAML syntax error"):
-            load_replay_log(bad)
+            load_style_chain(bad)
