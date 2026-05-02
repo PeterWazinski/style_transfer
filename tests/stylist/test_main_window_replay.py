@@ -1,4 +1,4 @@
-"""Tests for Phase 2 — replay log integration in MainWindow.
+"""Tests for Phase 2 — style chain integration in MainWindow.
 
 Covers:
 - Initial state: empty log
@@ -8,12 +8,13 @@ Covers:
 - _perform_undo pops last log entry
 - _open_photo clears log
 - _reset_photo clears log
-- _format_replay_log serialises to valid YAML
-- _copy_replay_log_to_clipboard when empty shows dialog
+- _format_style_chain serialises to valid YAML
+- _copy_style_chain_to_clipboard when empty shows dialog
 - Auto-save .yml written next to saved image when enabled
 - Auto-save .yml skipped when autosave_replay_log=False
-- _load_and_apply_replay_log applies a valid chain
-- _load_and_apply_replay_log shows error on invalid schema
+- _apply_style_chain applies a valid chain
+- _apply_style_chain shows error on invalid schema
+- _apply_style_chain pre-flight: unknown style shows error, no apply called
 """
 from __future__ import annotations
 
@@ -110,7 +111,7 @@ def _do_reapply(window: MainWindow, engine: MagicMock, strength: float = 1.5) ->
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestReplayLog:
+class TestStyleChain:
     def test_log_empty_initially(self, qtbot, tmp_path: Path) -> None:
         window, _ = _make_window(qtbot, tmp_path)
         assert window._replay_log == []
@@ -186,12 +187,12 @@ class TestReplayLog:
             window._clear_undo_stack()
         assert window._replay_log == []
 
-    def test_format_replay_log_yaml(self, qtbot, tmp_path: Path) -> None:
+    def test_format_style_chain_yaml(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
         _do_apply(window, engine)
         _do_reapply(window, engine, strength=1.5)
-        yml_text = window._format_replay_log()
+        yml_text = window._format_style_chain()
         parsed = yaml.safe_load(yml_text)
         assert parsed["version"] == 1
         assert parsed["tile_size"] == window._settings.tile_size
@@ -204,7 +205,7 @@ class TestReplayLog:
     def test_copy_to_clipboard_when_empty_shows_dialog(self, qtbot, tmp_path: Path) -> None:
         window, _ = _make_window(qtbot, tmp_path)
         with patch("src.stylist.main_window.QMessageBox.information") as mock_info:
-            window._copy_replay_log_to_clipboard()
+            window._copy_style_chain_to_clipboard()
         mock_info.assert_called_once()
         # Clipboard should be unchanged (empty or whatever it was)
         assert "No styles" in mock_info.call_args[0][2]
@@ -235,7 +236,7 @@ class TestReplayLog:
         yml_path = out_jpg.with_suffix(".yml")
         assert not yml_path.exists()
 
-    def test_load_replay_log_applies_chain(self, qtbot, tmp_path: Path) -> None:
+    def test_apply_style_chain_applies_chain(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
 
@@ -257,10 +258,29 @@ class TestReplayLog:
             patch("src.stylist.main_window.QMessageBox.critical"),
             patch("src.stylist.main_window.QMessageBox.warning"),
         ):
-            window._load_and_apply_replay_log()
+            window._apply_style_chain()
 
         assert engine.apply.call_count == 1
         assert window._styled_photo is not None
+
+    def test_apply_chain_preflight_unknown_style_shows_error(self, qtbot, tmp_path: Path) -> None:
+        """Pre-flight: unknown style → QMessageBox.critical shown, no apply called."""
+        window, engine = _make_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        chain = tmp_path / "chain.yml"
+        chain.write_text(
+            "version: 1\nsteps:\n  - style: NonExistent\n    strength: 100\n",
+            encoding="utf-8",
+        )
+        engine.apply = MagicMock(return_value=_dummy_image())
+        with (
+            patch("src.stylist.main_window.QFileDialog.getOpenFileName",
+                  return_value=(str(chain), "")),
+            patch("src.stylist.main_window.QMessageBox.critical") as mock_critical,
+        ):
+            window._apply_style_chain()
+        mock_critical.assert_called_once()
+        engine.apply.assert_not_called()
 
     def test_load_replay_applies_tile_settings(self, qtbot, tmp_path: Path) -> None:
         """tile_size and tile_overlap in the YAML must be applied to settings."""
@@ -285,7 +305,7 @@ class TestReplayLog:
             patch("src.stylist.main_window.QMessageBox.critical"),
             patch("src.stylist.main_window.QMessageBox.warning"),
         ):
-            window._load_and_apply_replay_log()
+            window._apply_style_chain()
 
         assert window._settings.tile_size == 512
         assert window._settings.overlap == 64
@@ -303,6 +323,6 @@ class TestReplayLog:
                   return_value=(str(bad_chain), "")),
             patch("src.stylist.main_window.QMessageBox.critical") as mock_crit,
         ):
-            window._load_and_apply_replay_log()
+            window._apply_style_chain()
 
         mock_crit.assert_called_once()

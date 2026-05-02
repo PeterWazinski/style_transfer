@@ -108,6 +108,9 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Peter's Picture Stylist")
         self.resize(1200, 750)
+        # Set window icon (also pins the palette icon to the Windows taskbar)
+        from src.stylist.app import _make_palette_icon  # noqa: PLC0415
+        self.setWindowIcon(_make_palette_icon())
         self._build_ui()
         self._wire_signals()
 
@@ -156,15 +159,15 @@ class MainWindow(QMainWindow):
         self._save_action.triggered.connect(self._save_result)
         file_menu.addAction(self._save_action)
 
-        self._replay_copy_action = QAction("Replay Log to Clipboard", self)
-        self._replay_copy_action.setStatusTip("Copy the current style chain as YAML to the clipboard")
-        self._replay_copy_action.triggered.connect(self._copy_replay_log_to_clipboard)
-        file_menu.addAction(self._replay_copy_action)
+        self._chain_copy_action = QAction("Style Chain to Clipboard", self)
+        self._chain_copy_action.setStatusTip("Copy the current style chain as YAML to the clipboard")
+        self._chain_copy_action.triggered.connect(self._copy_style_chain_to_clipboard)
+        file_menu.addAction(self._chain_copy_action)
 
-        self._replay_load_action = QAction("Load Replay Log\u2026", self)
-        self._replay_load_action.setStatusTip("Load a .yml style chain and apply it to the current photo")
-        self._replay_load_action.triggered.connect(self._load_and_apply_replay_log)
-        file_menu.addAction(self._replay_load_action)
+        self._chain_apply_action = QAction("Apply Style Chain\u2026", self)
+        self._chain_apply_action.setStatusTip("Load a .yml style chain and apply it to the current photo")
+        self._chain_apply_action.triggered.connect(self._apply_style_chain)
+        file_menu.addAction(self._chain_apply_action)
 
         file_menu.addSeparator()
         settings_action = QAction("Settings\u2026", self)
@@ -575,8 +578,8 @@ class MainWindow(QMainWindow):
         if self._settings.autosave_replay_log and self._replay_log:
             yml_path = path.with_suffix(".yml")
             try:
-                yml_path.write_text(self._format_replay_log(), encoding="utf-8")
-                self._status.showMessage(f"Saved to: {path.name}  (+ replay log)")
+                yml_path.write_text(self._format_style_chain(), encoding="utf-8")
+                self._status.showMessage(f"Saved to: {path.name}  (+ style chain)")
             except OSError as exc:
                 logger.warning("Could not auto-save replay log: %s", exc)
                 self._status.showMessage(f"Saved to: {path.name}")
@@ -587,8 +590,8 @@ class MainWindow(QMainWindow):
     # Replay log
     # ------------------------------------------------------------------
 
-    def _format_replay_log(self) -> str:
-        """Serialise the current replay log to a YAML string."""
+    def _format_style_chain(self) -> str:
+        """Serialise the current style chain to a YAML string."""
         import yaml  # lazy — only needed when user requests clipboard / autosave
         header = (
             f"# PetersPictureStyler \u2013 style chain\n"
@@ -602,12 +605,12 @@ class MainWindow(QMainWindow):
         }
         return header + yaml.dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
-    def _copy_replay_log_to_clipboard(self) -> None:
+    def _copy_style_chain_to_clipboard(self) -> None:
         if not self._replay_log:
-            QMessageBox.information(self, "Replay Log", "No styles applied yet \u2014 nothing to copy.")
+            QMessageBox.information(self, "Style Chain", "No styles applied yet \u2014 nothing to copy.")
             return
-        QApplication.clipboard().setText(self._format_replay_log())
-        self._status.showMessage("Replay log copied to clipboard.")
+        QApplication.clipboard().setText(self._format_style_chain())
+        self._status.showMessage("Style chain copied to clipboard.")
 
     def _resolve_style_id_by_name(self, style_name: str) -> str | None:
         """Return the style id for the given display name (case-insensitive), or None."""
@@ -617,20 +620,33 @@ class MainWindow(QMainWindow):
                 return style.id
         return None
 
-    def _load_and_apply_replay_log(self) -> None:
+    def _apply_style_chain(self) -> None:
         if self._current_photo is None:
-            QMessageBox.information(self, "Load Replay Log", "Open a photo first.")
+            QMessageBox.information(self, "Apply Style Chain", "Open a photo first.")
             return
         start_dir = self._settings.last_save_dir or self._settings.default_output_dir or ""
         path_str, _ = QFileDialog.getOpenFileName(
-            self, "Load Replay Log", start_dir, "YAML style chain (*.yml *.yaml)"
+            self, "Apply Style Chain", start_dir, "YAML style chain (*.yml *.yaml)"
         )
         if not path_str:
             return
         try:
             replay = load_style_chain(Path(path_str))
         except ValueError as exc:
-            QMessageBox.critical(self, "Invalid Replay Log", str(exc))
+            QMessageBox.critical(self, "Apply Style Chain", str(exc))
+            return
+        # Pre-flight: resolve ALL style names before touching the canvas
+        unknown: list[str] = [
+            step.style for step in replay.steps
+            if self._resolve_style_id_by_name(step.style) is None
+        ]
+        if unknown:
+            names = "\n".join(f"  \u2022 {n}" for n in unknown)
+            QMessageBox.critical(
+                self, "Apply Style Chain",
+                "The following styles were not found in the catalog:\n" + names +
+                "\n\nChain aborted.",
+            )
             return
         # Apply tile settings from the log if present
         if replay.tile_size is not None:
@@ -653,13 +669,7 @@ class MainWindow(QMainWindow):
         self.canvas.set_original(self._pil_to_pixmap(self._current_photo))
         for i, step in enumerate(replay.steps):
             style_id = self._resolve_style_id_by_name(step.style)
-            if style_id is None:
-                QMessageBox.warning(
-                    self, "Load Replay Log",
-                    f"Style \u2018{step.style}\u2019 not found in catalog \u2014 "
-                    f"chain aborted at step {i + 1}."
-                )
-                return
+            assert style_id is not None  # guaranteed by pre-flight
             # Load model if needed
             self._current_style_name = step.style
             if not self._engine.is_loaded(style_id):
@@ -677,14 +687,14 @@ class MainWindow(QMainWindow):
                             tensor_layout=style_obj.tensor_layout,
                         )
                     except Exception as exc:  # noqa: BLE001
-                        QMessageBox.critical(self, "Load Replay Log",
+                        QMessageBox.critical(self, "Apply Style Chain",
                             f"Could not load model for \u2018{step.style}\u2019: {exc}")
                         return
             if i == 0:
                 self._apply_style(style_id, step.strength / 100.0)
             else:
                 self._reapply_style(style_id, step.strength / 100.0)
-        self._status.showMessage(f"Replay log applied: {Path(path_str).name}")
+        self._status.showMessage(f"Style chain applied: {Path(path_str).name}")
 
     def _show_link_dialog(self, title: str, html: str) -> None:
         """Show an informational dialog that supports clickable hyperlinks."""
@@ -747,7 +757,12 @@ class MainWindow(QMainWindow):
             "Strength slider adjustments are <i>not</i> counted as separate undo steps.<br><br>"
             "<b>Reset \u21ba</b><br>"
             "Reloads the original photo and discards all style filters, returning the canvas "
-            "to its initial state.",
+            "to its initial state.<br><br>"
+            "<b>Style Chains</b><br>"
+            "Copy the current style chain to the clipboard via <i>File &rarr; Style Chain to Clipboard</i>. "
+            "The YAML can be saved as a <code>.yml</code> file and later re-applied via "
+            "<i>File &rarr; Apply Style Chain\u2026</i>, or processed in batch via "
+            "<code>BatchStyler.exe --apply-style-chain</code>.",
         )
 
     def _show_about_nst(self) -> None:
