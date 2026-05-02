@@ -229,10 +229,10 @@ class TestMainIntegration:
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            with patch("sys.argv", ["batch_styler.py", "--pdfoverview", str(photo)]):
+            with patch("sys.argv", ["batch_styler.py", "--style-overview", str(photo)]):
                 bs.main()
 
-        pdf_path = tmp_path / "photo_thumbnails.pdf"
+        pdf_path = tmp_path / "photo_style_overview.pdf"
         assert pdf_path.exists(), "PDF file was not created"
         assert pdf_path.stat().st_size > 1000, "PDF appears empty"
         # Verify it starts with the PDF magic bytes
@@ -270,17 +270,17 @@ class TestMainIntegration:
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            with patch("sys.argv", ["batch_styler.py", "--pdfoverview", str(photo)]):
+            with patch("sys.argv", ["batch_styler.py", "--style-overview", str(photo)]):
                 bs.main()
 
         # Open the PDF and check page count via byte scanning
-        pdf_bytes = (tmp_path / "photo_thumbnails.pdf").read_bytes()
+        pdf_bytes = (tmp_path / "photo_style_overview.pdf").read_bytes()
         # Count "/Page " occurrences (each page object contains this)
         page_count = pdf_bytes.count(b"/Type /Page\n") + pdf_bytes.count(b"/Type/Page\n")
         assert page_count >= 4, f"Expected >=4 PDF pages, found {page_count}"
 
     def test_no_mode_flag_exits_with_error(self, tmp_path: Path) -> None:
-        """Calling main() without --pdfoverview or --replay must exit with code 1."""
+        """Calling main() without --style-overview or --apply-style-chain must exit with code 1."""
         photo = tmp_path / "photo.jpg"
         _solid((100, 100, 100), size=64).save(photo)
         with pytest.raises(SystemExit) as exc_info:
@@ -293,8 +293,8 @@ class TestMainIntegration:
 # Integration: main() --replay
 # ---------------------------------------------------------------------------
 
-class TestCmdReplay:
-    """Tests for cmd_replay() — the --replay mode."""
+class TestCmdApplyStyleChain:
+    """Tests for cmd_apply_style_chain() — the --apply-style-chain mode."""
 
     _CHAIN_YAML = """\
 version: 1
@@ -333,13 +333,12 @@ steps:
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(
+            bs.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
             )
@@ -356,13 +355,12 @@ steps:
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(
+            bs.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
             )
@@ -392,20 +390,19 @@ steps:
             patch("batch_styler.REPO_ROOT", tmp_path),
             pytest.raises(SystemExit),
         ):
-            bs.cmd_replay(photo, bad_chain, tile_size=256, overlap=64, use_float16=False)
+            bs.cmd_apply_style_chain(photo, bad_chain, tile_size=256, overlap=64, use_float16=False)
 
     def test_replay_strength_converted_to_float(self, tmp_path: Path) -> None:
         """Each step's integer % strength must be divided by 100 before engine.apply."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(photo, chain, tile_size=256, overlap=64, use_float16=False)
+            bs.cmd_apply_style_chain(photo, chain, tile_size=256, overlap=64, use_float16=False)
 
         # Chain has Candy @ 100% (1.0) and Mosaic @ 150% (1.5)
         first_strength = mock_engine.apply.call_args_list[0][1]["strength"]
@@ -414,23 +411,22 @@ steps:
         assert abs(second_strength - 1.5) < 1e-6
 
     def test_replay_strength_override_scales_all_steps(self, tmp_path: Path) -> None:
-        """--strength-override 60 must scale each step's strength by 0.60."""
+        """--strength-scale 60 must scale each step's strength by 0.60."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(
+            bs.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
-                strength_override=60,
+                strength_scale=60,
             )
 
-        # Candy: 100% × 0.60 = 0.60; Mosaic: 150% × 0.60 = 0.90
+        # Candy: 100% × 60% = 60%; Mosaic: 150% × 60% = 90%
         first_strength = mock_engine.apply.call_args_list[0][1]["strength"]
         second_strength = mock_engine.apply.call_args_list[1][1]["strength"]
         assert abs(first_strength - 0.60) < 1e-6
@@ -456,7 +452,7 @@ steps:
             patch("batch_styler.REPO_ROOT", tmp_path),
             pytest.raises(SystemExit),
         ):
-            bs.cmd_replay(photo, invalid_chain, tile_size=None, overlap=None, use_float16=False)
+            bs.cmd_apply_style_chain(photo, invalid_chain, tile_size=None, overlap=None, use_float16=False)
 
     def test_tile_settings_from_yaml_used_when_cli_none(self, tmp_path: Path) -> None:
         """tile_size/tile_overlap stored in the YAML must be passed to engine.apply."""
@@ -469,13 +465,12 @@ steps:
         )
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(photo, chain_with_tiles, tile_size=None, overlap=None, use_float16=False)
+            bs.cmd_apply_style_chain(photo, chain_with_tiles, tile_size=None, overlap=None, use_float16=False)
 
         for call in mock_engine.apply.call_args_list:
             assert call[1]["tile_size"] == 768
@@ -492,13 +487,12 @@ steps:
         )
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(photo, chain_with_tiles, tile_size=512, overlap=None, use_float16=False)
+            bs.cmd_apply_style_chain(photo, chain_with_tiles, tile_size=512, overlap=None, use_float16=False)
 
         for call in mock_engine.apply.call_args_list:
             assert call[1]["tile_size"] == 512   # CLI override
@@ -511,13 +505,12 @@ steps:
         out_dir.mkdir()
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(
+            bs.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
                 out_dir=out_dir,
@@ -529,20 +522,19 @@ steps:
         assert not (tmp_path / "photo_my_chain.jpg").exists()
 
     def test_replay_strength_override_adds_suffix_to_filename(self, tmp_path: Path) -> None:
-        """When --strength-override N is used the output filename must end with _<N>.jpg."""
+        """When --strength-scale N is used the output filename must end with _<N>.jpg."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(
+            bs.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
-                strength_override=88,
+                strength_scale=88,
             )
 
         expected = tmp_path / "photo_my_chain_88.jpg"
@@ -551,22 +543,21 @@ steps:
         assert not (tmp_path / "photo_my_chain.jpg").exists()
 
     def test_replay_outdir_with_strength_suffix(self, tmp_path: Path) -> None:
-        """--outdir and --strength-override together: file goes to dir with suffix."""
+        """--outdir and --strength-scale together: file goes to dir with suffix."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
-        mock_engine._sessions = {}
 
         with (
             patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
             patch("batch_styler.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_replay(
+            bs.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
-                strength_override=75,
+                strength_scale=75,
                 out_dir=out_dir,
             )
 
@@ -721,10 +712,10 @@ class TestMainStyleFilter:
         ) -> None:
             called.extend(s["name"] for s in styles)
 
-        argv = ["batch_styler.py", "--pdfoverview", str(photo), "--style", "Udnie"]
+        argv = ["batch_styler.py", "--style-overview", str(photo), "--apply-style", "Udnie"]
         with (
             patch.object(bs, "REPO_ROOT", tmp_path),
-            patch.object(bs, "cmd_pdfoverview", side_effect=_fake_pdf),
+            patch.object(bs, "cmd_style_overview", side_effect=_fake_pdf),
         ):
             with patch("sys.argv", argv):
                 bs.main()
@@ -738,10 +729,10 @@ class TestMainStyleFilter:
         def _fake_pdf(image_path: Path, styles: list[dict], **kw: object) -> None:
             called.extend(s["name"] for s in styles)
 
-        argv = ["batch_styler.py", "--pdfoverview", str(photo)]
+        argv = ["batch_styler.py", "--style-overview", str(photo)]
         with (
             patch.object(bs, "REPO_ROOT", tmp_path),
-            patch.object(bs, "cmd_pdfoverview", side_effect=_fake_pdf),
+            patch.object(bs, "cmd_style_overview", side_effect=_fake_pdf),
         ):
             with patch("sys.argv", argv):
                 bs.main()
@@ -856,3 +847,154 @@ class _SkippedApplyAllStyles:
         assert call_kwargs.get('tensor_layout') == 'nchw_tanh', (
             "load_model must pass tensor_layout='nchw_tanh' for CycleGAN models"
         )
+
+
+# ---------------------------------------------------------------------------
+# New: --style-chain-overview command
+# ---------------------------------------------------------------------------
+
+class TestStyleChainOverview:
+    """Tests for cmd_style_chain_overview() — the --style-chain-overview mode."""
+
+    _CHAIN_YAML = "version: 1\nsteps:\n  - style: Candy\n    strength: 100\n"
+
+    def _setup(self, tmp_path: Path, n_chains: int = 2) -> tuple[Path, Path]:
+        """Create catalog, photo, and a chain directory with n_chains .yml files."""
+        onnx = tmp_path / "styles" / "candy" / "model.onnx"
+        onnx.parent.mkdir(parents=True, exist_ok=True)
+        onnx.write_bytes(b"fake")
+        (tmp_path / "styles" / "catalog.json").write_text(
+            json.dumps({"styles": [{"id": "candy", "name": "Candy", "model_path": "styles/candy/model.onnx"}]}),
+            encoding="utf-8",
+        )
+        photo = tmp_path / "photo.jpg"
+        _solid((100, 150, 200), size=64).save(photo)
+        chain_dir = tmp_path / "chains"
+        chain_dir.mkdir()
+        for i in range(n_chains):
+            (chain_dir / f"chain_{i}.yml").write_text(self._CHAIN_YAML, encoding="utf-8")
+        return photo, chain_dir
+
+    def test_chain_overview_applies_all_chains(self, tmp_path: Path) -> None:
+        """engine.apply is called once per step per chain."""
+        photo, chain_dir = self._setup(tmp_path, n_chains=3)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+        # 3 chains × 1 step each = 3 apply calls
+        assert mock_engine.apply.call_count == 3
+
+    def test_chain_overview_pdf_written(self, tmp_path: Path) -> None:
+        """Output PDF is written with the expected name."""
+        photo, chain_dir = self._setup(tmp_path, n_chains=2)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+        expected = tmp_path / f"photo_{chain_dir.name}_overview.pdf"
+        assert expected.exists(), f"PDF not found: {expected.name}"
+        assert expected.stat().st_size > 1000
+        assert expected.read_bytes()[:4] == b"%PDF"
+
+    def test_chain_overview_outdir(self, tmp_path: Path) -> None:
+        """When out_dir is given the PDF is written there, not next to the image."""
+        photo, chain_dir = self._setup(tmp_path, n_chains=1)
+        out_dir = tmp_path / "output"
+        out_dir.mkdir()
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_style_chain_overview(
+                photo, chain_dir, tile_size=256, overlap=64, use_float16=False, out_dir=out_dir,
+            )
+        expected = out_dir / f"photo_{chain_dir.name}_overview.pdf"
+        assert expected.exists(), "PDF not written to out_dir"
+        assert not (tmp_path / f"photo_{chain_dir.name}_overview.pdf").exists()
+
+    def test_chain_overview_empty_dir_exits(self, tmp_path: Path) -> None:
+        """An empty chain directory exits with a non-zero code."""
+        photo, chain_dir = self._setup(tmp_path, n_chains=0)
+        with (
+            patch("batch_styler.REPO_ROOT", tmp_path),
+            pytest.raises(SystemExit),
+        ):
+            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+
+    def test_chain_overview_invalid_chain_skipped(self, tmp_path: Path) -> None:
+        """Invalid-schema chain is skipped; valid chains still produce a PDF."""
+        photo, chain_dir = self._setup(tmp_path, n_chains=1)
+        (chain_dir / "bad.yml").write_text(
+            "version: 1\nsteps:\n  - style: Candy\n    strength: 999\n", encoding="utf-8",
+        )
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+        # Only 1 valid chain → 1 apply call
+        assert mock_engine.apply.call_count == 1
+        assert (tmp_path / f"photo_{chain_dir.name}_overview.pdf").exists()
+
+    def test_chain_overview_unknown_style_skipped(self, tmp_path: Path) -> None:
+        """A chain with an unknown style is skipped, not sys.exit."""
+        photo, chain_dir = self._setup(tmp_path, n_chains=1)
+        (chain_dir / "unknown.yml").write_text(
+            "version: 1\nsteps:\n  - style: NonExistent\n    strength: 100\n", encoding="utf-8",
+        )
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+        # Only 1 valid chain → 1 apply call
+        assert mock_engine.apply.call_count == 1
+
+    def test_chain_overview_strength_scale(self, tmp_path: Path) -> None:
+        """strength_scale=50 passes 0.50 to engine.apply for a 100% step."""
+        photo, chain_dir = self._setup(tmp_path, n_chains=1)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        with (
+            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
+            patch("batch_styler.REPO_ROOT", tmp_path),
+        ):
+            bs.cmd_style_chain_overview(
+                photo, chain_dir, tile_size=256, overlap=64, use_float16=False, strength_scale=50,
+            )
+        strength_used = mock_engine.apply.call_args_list[0][1]["strength"]
+        assert abs(strength_used - 0.50) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# --apply-style rejected with --apply-style-chain
+# ---------------------------------------------------------------------------
+
+class TestApplyStyleRejectedWithApplyStyleChain:
+    def test_apply_style_rejected_with_apply_style_chain(self, tmp_path: Path) -> None:
+        """--apply-style must be rejected when used with --apply-style-chain."""
+        photo = tmp_path / "photo.jpg"
+        _solid((100, 100, 100), size=64).save(photo)
+        chain = tmp_path / "chain.yml"
+        chain.write_text("version: 1\nsteps: []\n", encoding="utf-8")
+        with pytest.raises(SystemExit) as exc_info:
+            with patch("sys.argv", [
+                "batch_styler.py", "--apply-style-chain", str(chain),
+                str(photo), "--apply-style", "Candy",
+            ]):
+                bs.main()
+        assert exc_info.value.code != 0
+
