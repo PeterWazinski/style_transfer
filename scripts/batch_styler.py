@@ -422,32 +422,14 @@ def cmd_apply_style_chain(
     engine = StyleTransferEngine()
     source = Image.open(image_path).convert("RGB")
 
-    for i, step in enumerate(replay.steps, start=1):
-        matched = filter_styles_by_name(styles, step.style)
-        catalog_style = matched[0]
-        model_path = REPO_ROOT / catalog_style["model_path"]
-        if not model_path.exists():
-            sys.exit(f"Step {i}: model not found for '{step.style}': {model_path}")
-        tensor_layout: str = catalog_style.get("tensor_layout", "nchw")
-        if strength_scale is not None:
-            effective_pct = min(300, round(step.strength * strength_scale / 100))
-        else:
-            effective_pct = step.strength
-        strength = effective_pct / 100.0
-        print(
-            f"Step {i}/{len(replay.steps)}: '{step.style}' @ {effective_pct}% ...",
-            flush=True,
-        )
-        engine.load_model(catalog_style["id"], model_path, tensor_layout=tensor_layout)
-        source = engine.apply(
-            source,
-            catalog_style["id"],
-            strength=strength,
-            tile_size=effective_tile_size,
-            overlap=effective_overlap,
-            use_float16=use_float16,
-        )
-        engine.unload_model(catalog_style["id"])
+    print(f"Applying {len(replay.steps)} step(s) ...", flush=True)
+    result = _apply_chain_to_image(
+        source, replay, styles, engine,
+        tile_size=effective_tile_size,
+        overlap=effective_overlap,
+        use_float16=use_float16,
+        strength_scale=strength_scale,
+    )
 
     dir_out = out_dir if out_dir is not None else image_path.parent
     if strength_scale is not None:
@@ -455,7 +437,7 @@ def cmd_apply_style_chain(
     else:
         fname = f"{image_path.stem}_{replay_path.stem}.jpg"
     out_path = dir_out / fname
-    source.save(out_path, format="JPEG", quality=92)
+    result.save(out_path, format="JPEG", quality=92)
     print(f"\nOK  Result written: {out_path}")
 
 

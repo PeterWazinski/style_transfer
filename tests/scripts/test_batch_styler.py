@@ -195,6 +195,53 @@ class TestStyleNameToFilename:
 
 
 # ---------------------------------------------------------------------------
+# _list_styles_for_help
+# ---------------------------------------------------------------------------
+
+class TestListStylesForHelp:
+    def test_returns_style_names(self, tmp_path: Path) -> None:
+        """_list_styles_for_help reads catalog.json and lists display names."""
+        catalog = {
+            "styles": [
+                {"id": "candy", "name": "Candy", "model_path": "styles/candy/model.onnx"},
+                {"id": "mosaic", "name": "Mosaic", "model_path": "styles/mosaic/model.onnx"},
+            ]
+        }
+        (tmp_path / "styles").mkdir()
+        (tmp_path / "styles" / "catalog.json").write_text(
+            json.dumps(catalog), encoding="utf-8"
+        )
+        with patch.object(bs, "REPO_ROOT", tmp_path):
+            result = bs._list_styles_for_help()
+        assert "Candy" in result
+        assert "Mosaic" in result
+
+    def test_names_are_sorted(self, tmp_path: Path) -> None:
+        """Style names are returned in sorted (case-insensitive) order."""
+        catalog = {
+            "styles": [
+                {"id": "z_style", "name": "Zebra Style", "model_path": "x"},
+                {"id": "a_style", "name": "Apple Style", "model_path": "x"},
+            ]
+        }
+        (tmp_path / "styles").mkdir()
+        (tmp_path / "styles" / "catalog.json").write_text(
+            json.dumps(catalog), encoding="utf-8"
+        )
+        with patch.object(bs, "REPO_ROOT", tmp_path):
+            result = bs._list_styles_for_help()
+        apple_pos = result.index("Apple")
+        zebra_pos = result.index("Zebra")
+        assert apple_pos < zebra_pos
+
+    def test_missing_catalog_returns_fallback(self, tmp_path: Path) -> None:
+        """When catalog.json is absent a graceful fallback string is returned."""
+        with patch.object(bs, "REPO_ROOT", tmp_path):
+            result = bs._list_styles_for_help()
+        assert "catalog not found" in result
+
+
+# ---------------------------------------------------------------------------
 # Integration: main() --pdfoverview
 # ---------------------------------------------------------------------------
 
