@@ -1,0 +1,10 @@
+# PetersPictureStyler – style chain
+# Created: 2026-04-30 16:01
+version: 1
+tile_size: 1024
+tile_overlap: 128
+steps:
+- style: Abstract
+  strength: 68
+- style: Cubism
+  strength: 187
