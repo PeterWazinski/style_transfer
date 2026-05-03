@@ -22,7 +22,7 @@ class StyleModel:
     id: str                                         # unique slug, e.g. "candy"
     name: str                                       # display name, e.g. "Candy"
     model_path: str                                 # relative path to .onnx file
-    preview_path: str                               # relative path to thumbnail
+    preview_path: str = ""                          # relative path to thumbnail (optional)
     description: str = ""
     author: str = ""
     is_builtin: bool = True

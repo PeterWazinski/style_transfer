@@ -29,6 +29,7 @@ import src.batch_styler.pdf_layout as bs           # layout constants + helpers
 import src.batch_styler.catalog as bs_catalog      # catalog helpers + REPO_ROOT
 import src.batch_styler.commands as bs_commands    # command functions
 import src.batch_styler.app as bs_app              # main()
+from src.core.registry import StyleRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -667,54 +668,44 @@ class _OldTestMainFullImage:
 
 
 # ---------------------------------------------------------------------------
-# --style filter: filter_styles_by_name unit tests
+# StyleRegistry.find_by_name unit tests
 # ---------------------------------------------------------------------------
 
-class TestFilterStylesByName:
-    def _styles(self) -> list[dict]:
-        return [
-            {"id": "candy", "name": "Candy", "model_path": "styles/candy/model.onnx"},
-            {"id": "mosaic", "name": "Mosaic", "model_path": "styles/mosaic/model.onnx"},
+class TestStyleRegistryFindByName:
+    def _make_registry(self, tmp_path: Path) -> StyleRegistry:
+        entries = [
+            {"id": "candy",       "name": "Candy",       "model_path": "styles/candy/model.onnx"},
+            {"id": "mosaic",      "name": "Mosaic",      "model_path": "styles/mosaic/model.onnx"},
             {"id": "anime_hayao", "name": "Anime Hayao", "model_path": "styles/anime_hayao/model.onnx"},
         ]
+        catalog_path = tmp_path / "catalog.json"
+        catalog_path.write_text(json.dumps({"styles": entries}), encoding="utf-8")
+        return StyleRegistry(catalog_path)
 
-    def test_exact_match_returns_single_entry(self) -> None:
-        result = bs_catalog.filter_styles_by_name(self._styles(), "Candy")
-        assert len(result) == 1
-        assert result[0]["name"] == "Candy"
+    def test_exact_match_returns_style_model(self, tmp_path: Path) -> None:
+        result = self._make_registry(tmp_path).find_by_name("Candy")
+        assert result is not None
+        assert result.name == "Candy"
 
-    def test_case_insensitive_match(self) -> None:
-        result = bs_catalog.filter_styles_by_name(self._styles(), "anime hayao")
-        assert result[0]["name"] == "Anime Hayao"
+    def test_case_insensitive_match(self, tmp_path: Path) -> None:
+        result = self._make_registry(tmp_path).find_by_name("anime hayao")
+        assert result is not None
+        assert result.name == "Anime Hayao"
 
-    def test_uppercase_query(self) -> None:
-        result = bs_catalog.filter_styles_by_name(self._styles(), "MOSAIC")
-        assert result[0]["name"] == "Mosaic"
+    def test_uppercase_query(self, tmp_path: Path) -> None:
+        result = self._make_registry(tmp_path).find_by_name("MOSAIC")
+        assert result is not None
+        assert result.name == "Mosaic"
 
-    def test_leading_trailing_whitespace_stripped(self) -> None:
-        result = bs_catalog.filter_styles_by_name(self._styles(), "  Candy  ")
-        assert result[0]["name"] == "Candy"
+    def test_unknown_style_returns_none(self, tmp_path: Path) -> None:
+        result = self._make_registry(tmp_path).find_by_name("NonExistent")
+        assert result is None
 
-    def test_unknown_style_aborts_with_exit(self) -> None:
-        with pytest.raises(SystemExit) as exc_info:
-            bs_catalog.filter_styles_by_name(self._styles(), "NonExistent")
-        assert exc_info.value.code is not None
-
-    def test_error_message_contains_style_name(self) -> None:
-        with pytest.raises(SystemExit) as exc_info:
-            bs_catalog.filter_styles_by_name(self._styles(), "Ghost")
-        assert "Ghost" in str(exc_info.value.code)
-
-    def test_error_message_lists_available_styles(self) -> None:
-        with pytest.raises(SystemExit) as exc_info:
-            bs_catalog.filter_styles_by_name(self._styles(), "Ghost")
-        msg = str(exc_info.value.code)
-        assert "Candy" in msg
-        assert "Mosaic" in msg
-
-    def test_empty_catalog_aborts(self) -> None:
-        with pytest.raises(SystemExit):
-            bs_catalog.filter_styles_by_name([], "Candy")
+    def test_empty_catalog_returns_none(self, tmp_path: Path) -> None:
+        catalog_path = tmp_path / "catalog.json"
+        catalog_path.write_text(json.dumps({"styles": []}), encoding="utf-8")
+        result = StyleRegistry(catalog_path).find_by_name("Candy")
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -749,10 +740,10 @@ class TestMainStyleFilter:
 
         def _fake_pdf(
             image_path: Path,
-            styles: list[dict],
+            styles: object,
             **kw: object,
         ) -> None:
-            called.extend(s["name"] for s in styles)
+            called.extend(s.name for s in styles)  # type: ignore[union-attr]
 
         argv = ["app.py", "--style-overview", str(photo), "--apply-style", "Udnie"]
         with (
@@ -768,8 +759,8 @@ class TestMainStyleFilter:
         photo = self._setup_catalog(tmp_path)
         called: list[str] = []
 
-        def _fake_pdf(image_path: Path, styles: list[dict], **kw: object) -> None:
-            called.extend(s["name"] for s in styles)
+        def _fake_pdf(image_path: Path, styles: object, **kw: object) -> None:
+            called.extend(s.name for s in styles)  # type: ignore[union-attr]
 
         argv = ["app.py", "--style-overview", str(photo)]
         with (

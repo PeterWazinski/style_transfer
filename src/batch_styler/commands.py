@@ -6,7 +6,6 @@ in tests covers this module as well.
 """
 from __future__ import annotations
 
-import json
 import logging
 import sys
 from pathlib import Path
@@ -28,6 +27,8 @@ from src.batch_styler.pdf_layout import (
     build_cell_list,
 )
 from src.core.engine import StyleTransferEngine
+from src.core.models import StyleModel
+from src.core.registry import StyleRegistry
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -41,7 +42,7 @@ JPEG_QUALITY: int = 92
 
 def cmd_style_overview(
     image_path: Path,
-    styles: list[dict],
+    styles: list[StyleModel],
     tile_size: int,
     overlap: int,
     strength: float,  # noqa: ARG001 — ignored; style_overview uses PDF_STRENGTHS
@@ -52,7 +53,7 @@ def cmd_style_overview(
     source = Image.open(image_path).convert("RGB")
     engine = StyleTransferEngine()
 
-    styles_sorted = sorted(styles, key=lambda s: s.get("name", s["id"]).casefold())
+    styles_sorted = sorted(styles, key=lambda s: s.name.casefold())
 
     cells: list[tuple[str, Image.Image | None]] = [
         ("Original", source.copy()),
@@ -62,34 +63,31 @@ def cmd_style_overview(
     n_applied: int = 0
 
     for style in styles_sorted:
-        style_id:   str  = style["id"]
-        style_name: str  = style.get("name", style_id)
-        model_path: Path = _catalog.REPO_ROOT / style["model_path"]
+        model_path: Path = style.model_path_resolved(_catalog.REPO_ROOT)
 
         if not model_path.exists():
-            print(f"  Skipping '{style_name}' — model not found: {model_path}")
+            print(f"  Skipping '{style.name}' — model not found: {model_path}")
             continue
 
-        tensor_layout: str = style.get("tensor_layout", "nchw")
-        print(f"Processing style '{style_name}' ...", flush=True)
+        print(f"Processing style '{style.name}' ...", flush=True)
         try:
-            engine.load_model(style_id, model_path, tensor_layout=tensor_layout)
+            engine.load_model(style.id, model_path, tensor_layout=style.tensor_layout)
             styled_full = engine.apply(
                 source,
-                style_id,
+                style.id,
                 strength=1.0,
                 tile_size=tile_size,
                 overlap=overlap,
                 use_float16=use_float16,
             )
         except Exception as exc:  # noqa: BLE001
-            print(f"  Error applying '{style_name}': {exc}")
+            print(f"  Error applying '{style.name}': {exc}")
             continue
         finally:
-            engine.unload_model(style_id)
+            engine.unload_model(style.id)
 
         for s in PDF_STRENGTHS:
-            label = f"{style_name} ({int(s * 100)}%)"
+            label = f"{style.name} ({int(s * 100)}%)"
             cells.append((label, _blend_to_strength(source, styled_full, s)))
         n_applied += 1
 
@@ -127,7 +125,7 @@ def cmd_style_overview(
 def _apply_chain_to_image(
     source: Image.Image,
     chain,  # ReplayLog
-    styles: list[dict],
+    registry: StyleRegistry,
     engine: StyleTransferEngine,
     tile_size: int,
     overlap: int,
@@ -137,21 +135,21 @@ def _apply_chain_to_image(
     """Apply all steps of *chain* to *source* and return the final result."""
     result = source.copy()
     for step in chain.steps:
-        matched = _catalog.filter_styles_by_name(styles, step.style)
-        catalog_style = matched[0]
-        model_path = _catalog.REPO_ROOT / catalog_style["model_path"]
+        style_model = registry.find_by_name(step.style)
+        if style_model is None:
+            sys.exit(f"Error: style '{step.style}' not found in catalog.")
+        model_path = style_model.model_path_resolved(_catalog.REPO_ROOT)
         if strength_scale is not None:
             effective_pct = min(300, round(step.strength * strength_scale / 100))
         else:
             effective_pct = step.strength
         strength = effective_pct / 100.0
-        tensor_layout: str = catalog_style.get("tensor_layout", "nchw")
-        engine.load_model(catalog_style["id"], model_path, tensor_layout=tensor_layout)
+        engine.load_model(style_model.id, model_path, tensor_layout=style_model.tensor_layout)
         result = engine.apply(
-            result, catalog_style["id"],
+            result, style_model.id,
             strength=strength, tile_size=tile_size, overlap=overlap, use_float16=use_float16,
         )
-        engine.unload_model(catalog_style["id"])
+        engine.unload_model(style_model.id)
     return result
 
 
@@ -179,15 +177,8 @@ def cmd_apply_style_chain(
     if not catalog_path.exists():
         sys.exit(f"Error: catalog not found: {catalog_path}")
 
-    with open(catalog_path, encoding="utf-8") as f:
-        catalog: dict = json.load(f)
-    styles: list[dict] = catalog.get("styles", [])
-
-    unknown = []
-    for step in replay.steps:
-        needle = step.style.strip().casefold()
-        if not any(s.get("name", "").casefold() == needle for s in styles):
-            unknown.append(step.style)
+    registry = StyleRegistry(catalog_path)
+    unknown = [step.style for step in replay.steps if registry.find_by_name(step.style) is None]
     if unknown:
         sys.exit("Error: the following style(s) were not found in the catalog:\n" +
                  "\n".join(f"  - {n}" for n in unknown))
@@ -200,7 +191,7 @@ def cmd_apply_style_chain(
 
     print(f"Applying {len(replay.steps)} step(s) ...", flush=True)
     result = _apply_chain_to_image(
-        source, replay, styles, engine,
+        source, replay, registry, engine,
         tile_size=effective_tile_size,
         overlap=effective_overlap,
         use_float16=use_float16,
@@ -241,9 +232,7 @@ def cmd_style_chain_overview(
     catalog_path = _catalog.REPO_ROOT / "styles" / "catalog.json"
     if not catalog_path.exists():
         sys.exit(f"Error: catalog not found: {catalog_path}")
-    with open(catalog_path, encoding="utf-8") as f:
-        catalog: dict = json.load(f)
-    styles: list[dict] = catalog.get("styles", [])
+    registry = StyleRegistry(catalog_path)
 
     effective_tile_size: int = tile_size if tile_size is not None else 1024
     effective_overlap: int = overlap if overlap is not None else 128
@@ -259,18 +248,14 @@ def cmd_style_chain_overview(
         except ValueError as exc:
             print(f"  Warning: skipping '{chain_file.name}' — invalid schema: {exc}")
             continue
-        unknown = []
-        for step in chain.steps:
-            needle = step.style.strip().casefold()
-            if not any(s.get("name", "").casefold() == needle for s in styles):
-                unknown.append(step.style)
+        unknown = [step.style for step in chain.steps if registry.find_by_name(step.style) is None]
         if unknown:
             print(f"  Warning: skipping '{chain_file.name}' — unknown style(s): {', '.join(unknown)}")
             continue
         print(f"Applying chain '{chain_file.stem}' ...", flush=True)
         try:
             result = _apply_chain_to_image(
-                source, chain, styles, engine,
+                source, chain, registry, engine,
                 tile_size=effective_tile_size,
                 overlap=effective_overlap,
                 use_float16=use_float16,

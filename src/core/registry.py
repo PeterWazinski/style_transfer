@@ -89,6 +89,21 @@ class StyleRegistry:
     def __contains__(self, style_id: str) -> bool:
         return any(s.id == style_id for s in self._catalog)
 
+    def find_by_name(self, name: str) -> StyleModel | None:
+        """Return the first style whose display name matches *name* (case-insensitive).
+
+        Args:
+            name: The display name to search for (e.g. ``"Van Gogh"``).
+
+        Returns:
+            The matching :class:`StyleModel`, or ``None`` if not found.
+        """
+        needle = name.casefold()
+        for style in self._catalog:
+            if style.name.casefold() == needle:
+                return style
+        return None
+
     # ------------------------------------------------------------------
     # Write operations
     # ------------------------------------------------------------------

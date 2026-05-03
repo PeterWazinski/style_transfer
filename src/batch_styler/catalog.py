@@ -47,23 +47,3 @@ def _list_styles_for_help() -> str:
         return "\n".join(f"  {n}" for n in names) if names else "  (no styles found)"
     except Exception:
         return "  (catalog not found)"
-
-
-def filter_styles_by_name(
-    styles: list[dict],
-    style_name: str,
-) -> list[dict]:
-    """Return the subset of *styles* whose ``name`` matches *style_name* (case-insensitive).
-
-    Raises:
-        SystemExit: If no style with the given name is found.
-    """
-    needle = style_name.strip().casefold()
-    matches = [s for s in styles if s.get("name", "").casefold() == needle]
-    if not matches:
-        available = ", ".join(f"'{s.get('name', s['id'])}' " for s in styles)
-        sys.exit(
-            f"Error: style '{style_name}' not found in catalog.\n"
-            f"Available styles: {available}"
-        )
-    return matches

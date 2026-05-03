@@ -11,7 +11,6 @@ When compiled with PyInstaller the entry point is ``BatchStyler.exe``.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -29,7 +28,7 @@ from src.batch_styler.commands import (  # noqa: E402
     cmd_style_chain_overview,
     cmd_style_overview,
 )
-from src.batch_styler.catalog import filter_styles_by_name  # noqa: E402
+from src.core.registry import StyleRegistry  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -178,15 +177,20 @@ def main() -> None:
     if not catalog_path.exists():
         sys.exit(f"Error: catalog not found: {catalog_path}")
 
-    with open(catalog_path, encoding="utf-8") as f:
-        catalog: dict = json.load(f)
-
-    styles: list[dict] = catalog.get("styles", [])
+    registry = StyleRegistry(catalog_path)
+    styles = registry.list_styles()
     if not styles:
         sys.exit("No styles found in catalog.")
 
     if args.apply_style:
-        styles = filter_styles_by_name(styles, args.apply_style)
+        matched = registry.find_by_name(args.apply_style)
+        if matched is None:
+            available = ", ".join(f"'{s.name}'" for s in registry.list_styles())
+            sys.exit(
+                f"Error: style '{args.apply_style}' not found in catalog.\n"
+                f"Available styles: {available}"
+            )
+        styles = [matched]
 
     pdf_tile_size: int = args.tile_size if args.tile_size is not None else 1024
     pdf_overlap: int = args.overlap if args.overlap is not None else 128
