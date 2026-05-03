@@ -58,6 +58,18 @@ from src.stylist.style_gallery import StyleGalleryView
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+def _get_project_root() -> Path:
+    """Return the project root for resolving relative model paths.
+
+    When frozen (PyInstaller), the root is the directory that contains the
+    executable (i.e. ``dist/PetersPictureStyler/``).  In development the root
+    is three levels above this file (``src/stylist/main_window.py`` → repo root).
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent.parent
+
+
 @dataclass
 class _UndoSnapshot:
     """State captured before each Apply / Re-Apply so the operation can be undone."""
@@ -224,11 +236,7 @@ class MainWindow(QMainWindow):
         # Preload ONNX if not already loaded
         if not self._engine.is_loaded(style.id):
             # model_path is stored as a str relative to the project root
-            project_root: Path = (
-                Path(sys.executable).parent
-                if getattr(sys, "frozen", False)
-                else Path(__file__).parent.parent.parent
-            )
+            project_root: Path = _get_project_root()
             model_path: Path = style.model_path_resolved(project_root)
             try:
                 self._engine.load_model(
@@ -673,11 +681,7 @@ class MainWindow(QMainWindow):
             # Load model if needed
             self._current_style_name = step.style
             if not self._engine.is_loaded(style_id):
-                project_root: Path = (
-                    Path(sys.executable).parent
-                    if getattr(sys, "frozen", False)
-                    else Path(__file__).parent.parent.parent
-                )
+                project_root: Path = _get_project_root()
                 if style_id in self._registry:
                     style_obj = self._registry.get(style_id)
                     try:
