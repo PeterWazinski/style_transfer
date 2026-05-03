@@ -8,11 +8,13 @@ Inference runs entirely through ONNX Runtime — no GPU or Python knowledge requ
 
 ## Features
 
-- **5 built-in styles** — Candy, Mosaic, Rain Princess, Abstract, Starry Night
+- **18 built-in styles** — CNN TransformerNet models (Candy, Mosaic, Rain Princess, …) and CycleGAN models (Monet, Van Gogh, Cézanne, Ukiyo-e) plus Anime, Manga, Cubism and more
 - **Tiled inference** — handles large photos without running out of memory
 - **Strength slider** — blend between original and styled result
-- **Portable exe** — single `PetersPictureStyler.exe`, no install needed
-- **Extensible** — train new styles on Kaggle (free GPU) and drop them in
+- **Style chains** — record and replay a sequence of styles as a YAML file
+- **Batch Styler CLI** — headless style-overview PDFs and style-chain overviews from the command line
+- **Portable exe** — copy `dist\PetersPictureStyler\` and double-click, no install needed
+- **Extensible** — train new styles on Kaggle (free GPU) and drop them in without recompiling
 
 ---
 
@@ -23,7 +25,7 @@ Inference runs entirely through ONNX Runtime — no GPU or Python knowledge requ
 3. Open a photo · pick a style · click Apply · save the result
 
 **Add a new style without recompiling:**
-1. Drop the style folder (containing `model.onnx` + `preview.jpg`) into `PetersPictureStyler\styles\`
+1. Drop the style folder (containing `model.onnx`) into `PetersPictureStyler\styles\`
 2. Append the entry to `PetersPictureStyler\styles\catalog.json`
 3. Restart the app — the new style appears in the gallery
 
@@ -50,49 +52,61 @@ python -m venv .venv
 
 Requires PyInstaller in the venv (`pip install pyinstaller`). torch/torchvision are excluded — inference uses ONNX Runtime only.
 
-The build produces a **directory** (not a single exe). The `styles\` folder is copied in after compilation so styles remain editable without recompiling.
+The build produces a **directory** (not a single exe). The `styles\` folder is copied in after compilation so styles remain editable without recompiling. Intermediate stub EXEs at `dist\` root are removed automatically by the spec file.
 
 ---
 
-## Batch Styler
+## Batch Styler CLI
 
-Apply every installed style to a single photo in one command.
+`BatchStyler.exe` (headless, no GUI) produces overview PDFs from the command line.
 
 ```powershell
-# PDF contact sheet — one page per style, low-res previews
-.\scripts\batch_styler.ps1 -pdfoverview photos\photo.jpg
+cd dist\PetersPictureStyler
 
-# Full-resolution per-style JPEGs — one file per style in a dated output folder
-.\scripts\batch_styler.ps1 -fullimage photos\photo.jpg
+# PDF contact sheet — all styles at multiple strengths
+.\BatchStyler.exe --style-overview --outdir C:\out photos\photo.jpg
 
-# From cmd.exe
-powershell -ExecutionPolicy RemoteSigned -File scripts\batch_styler.ps1 -pdfoverview photos\photo.jpg
+# PDF overview — all style chains in a directory
+.\BatchStyler.exe --style-chain-overview sample_images\style-chains --outdir C:\out photos\photo.jpg
 
-# Optional flags — work with both modes
-.\scripts\batch_styler.ps1 -fullimage photos\photo.jpg -Strength 0.85 -TileSize 512
+# Apply a single style chain to one photo
+.\BatchStyler.exe --apply-style-chain sample_images\style-chains\my_chain.yml photos\photo.jpg
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `-pdfoverview` | — | Generate a PDF contact sheet |
-| `-fullimage` | — | Generate full-resolution JPEGs |
-| `-Strength` | `1.0` | Style blend (0.0 = original, 1.0 = full style) |
-| `-TileSize` | `256` | Tile size in pixels for tiled inference |
+Progress is printed per-style with timing and a running count:
+```
+(1/18) Processing style 'Abstract' in 33 seconds.
+(2/18) Processing style 'Anime' in 28 seconds.
+...
+PDF written: C:\out\photo_style_overview.pdf
+```
+
+Full option reference: `.\BatchStyler.exe --help`
+
+### Batch script
+
+`scripts\create_sample_overview.bat` runs both overview modes for every photo in
+`sample_images\sample_pics\` and writes PDFs to `sample_images\style-overviews\`
+and `sample_images\style-chain-overviews\`.
 
 ---
 
 ## Train a New Style
 
-Training requires a GPU. The easiest free option is Kaggle (30 h/week GPU T4):
+Training requires a GPU. The easiest free option is Kaggle (30 h/week GPU T4).
+See **[training/index.md](training/index.md)** for the full step-by-step guide.
 
-1. Open `scripts/kaggle_style_training.ipynb` in a Kaggle notebook
+Short summary:
+
+1. Open `training/kaggle_trainer.ipynb` (or `kaggle_multi_pic_trainer.ipynb`) on Kaggle
 2. Add the `awsaf49/coco-2017-dataset` input dataset and enable GPU T4
-3. Run all cells — training takes ~3 h for 2 epochs (~166 k images)
-4. Download `model.onnx` + `preview.jpg` from the Output tab
-5. Run `scripts/add_style.ipynb` locally to register the new style in the gallery
+3. Run all cells — training takes ~3 h for 2 epochs (~118 k images)
+4. Download the `.onnx` from the Output tab
+5. Run `training/add_CNN_style.ipynb` locally to register the new style in the gallery
+6. Rebuild with `.\compile.ps1`
 
-> **Analyse before training:** open `scripts/style_analysis.ipynb` to score your style image
-> and run a local CPU smoke test before committing to the full Kaggle run.
+> **Analyse before training:** `scripts/style_analysis.ipynb` scores your style image,
+> recommends weights, and runs a local CPU smoke test before committing to the full Kaggle run.
 
 ---
 
@@ -100,15 +114,24 @@ Training requires a GPU. The easiest free option is Kaggle (30 h/week GPU T4):
 
 ```
 src/
-  stylist/   Qt/PySide6 GUI app (no torch)
-  trainer/   Training pipeline (torch, dev only)
-  core/      Shared ONNX inference, registry, settings
-styles/      Pretrained ONNX models + catalog.json
-scripts/     Training notebooks, analysis tools, helper scripts (see scripts/index.md)
-docs/        Architecture notes, roadmap
-main_image_styler.py    → launch the app
-main_style_trainer.py   → train a new style (CLI)
+  stylist/      Qt/PySide6 GUI app (no torch)
+    apply_controller.py       ← style-apply mixin
+    style_chain_controller.py ← chain-management mixin
+    help_dialogs.py           ← standalone help dialogs
+  batch_styler/ Headless CLI for overview PDFs
+  trainer/      Training pipeline (torch, dev only)
+  core/         Shared ONNX inference, registry, settings, style-chain schema
+styles/         Pretrained ONNX models + catalog.json
+training/       Training notebooks + helpers (see training/index.md)
+scripts/        Analysis tools, helper scripts (see scripts/index.md)
+bin/            Subprocess entry points for trainer (memory isolation from GUI)
+docs/           Architecture notes, refactoring plan
+sample_images/  Sample photos, style chains, overview output
+assets/         App icon
+main_image_styler.py    → thin stub: launches src.stylist.app:main
+main_style_trainer.py   → thin stub: launches src.trainer.app:main
 compile.ps1             → build the portable app directory (dist\PetersPictureStyler\)
+style_transfer.spec     → PyInstaller spec (PetersPictureStyler + BatchStyler)
 ```
 
 ---
@@ -116,12 +139,15 @@ compile.ps1             → build the portable app directory (dist\PetersPicture
 ## Tests
 
 ```powershell
-.venv\Scripts\python.exe -m pytest tests/ -k "not takes_long"   # ~6 s, 142 tests
+# Fast suite (~8 s, 341 tests)
+.venv\Scripts\python.exe -m pytest tests/ -q --tb=short --ignore=tests/trainer/test_multi_pic_gram.py
 ```
 
 ---
 
 ## Credits
 
-Pretrained models from [yakhyo/fast-neural-style-transfer](https://github.com/yakhyo/fast-neural-style-transfer) and [igreat/fast-style-transfer](https://github.com/igreat/fast-style-transfer) (both MIT).  
+Pretrained CNN models from [yakhyo/fast-neural-style-transfer](https://github.com/yakhyo/fast-neural-style-transfer) and [igreat/fast-style-transfer](https://github.com/igreat/fast-style-transfer) (both MIT).  
+CycleGAN models from [junyanz/pytorch-CycleGAN-and-pix2pix](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix) (BSD).  
 Architecture based on Johnson et al., *Perceptual Losses for Real-Time Style Transfer*, 2016.
+

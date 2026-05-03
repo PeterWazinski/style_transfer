@@ -7,5 +7,3 @@
 | `gen_palette_ico_temp.py` | Generates palette and icon assets for the application. |
 | `style_analysis.ipynb` | Interactive style-image analyser. Computes texture/geometry metrics for every JPEG in a folder, recommends `STYLE_WEIGHT` / `CONTENT_WEIGHT`, shows a thumbnail grid, and provides a local smoke-test widget (CPU) with a signal-strength check. Use before a Kaggle run to screen images. |
 
-> **Training files have moved to `training/`** — see [`training/`](../training/) for
-> `kaggle_training_helper.py`, `add_style_helper.py`, and all training notebooks.
