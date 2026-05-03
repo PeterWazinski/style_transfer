@@ -11,7 +11,7 @@
        without recompiling.
 
     Output: dist\PetersPictureStyler\
-              PetersPictureStylist.exe   ← double-click to run GUI
+              PetersPictureStyler.exe    ← double-click to run GUI
               BatchStyler.exe            ← headless CLI for batch style transfer
               styles\                    ← drop new style folders here
               app.log                    ← written at runtime
@@ -41,7 +41,7 @@ $VenvPy     = "$Root\.venv\Scripts\python.exe"
 $VenvPip    = "$Root\.venv\Scripts\pip.exe"
 $SpecFile   = "$Root\style_transfer.spec"
 $OutputDir  = "$Root\dist\PetersPictureStyler"
-$OutputExe  = "$OutputDir\PetersPictureStylist.exe"
+$OutputExe  = "$OutputDir\PetersPictureStyler.exe"
 $BatchExe   = "$OutputDir\BatchStyler.exe"
 
 # Verify the venv exists before doing anything else
@@ -72,7 +72,7 @@ if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
 #    PyInstaller creates intermediate single-file stubs in dist\ as part of
 #    the onedir COLLECT step.  They are not the final deliverable.
 Write-Host "`n=== Removing intermediate EXE stubs from dist\ ===" -ForegroundColor Cyan
-foreach ($stub in @("$Root\dist\PetersPictureStylist.exe", "$Root\dist\BatchStyler.exe")) {
+foreach ($stub in @("$Root\dist\PetersPictureStyler.exe", "$Root\dist\BatchStyler.exe")) {
     if (Test-Path $stub) {
         Remove-Item -Force $stub
         Write-Host "  Removed: $stub"

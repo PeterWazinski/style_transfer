@@ -2,7 +2,7 @@
 # style_transfer.spec  –  PyInstaller spec for PetersPictureStyler
 #
 # Produces a portable app directory: dist\PetersPictureStyler\
-#   PetersPictureStylist.exe  ← the GUI executable
+#   PetersPictureStyler.exe   ← the GUI executable
 #   BatchStyler.exe           ← headless CLI for batch processing
 #   styles\                   ← editable; add new styles here without recompiling
 #   app.log                   ← written at runtime
@@ -119,7 +119,7 @@ exe = EXE(
     pyz,
     a.scripts,
     [],                             # ← onedir: no data packing into the exe
-    name="PetersPictureStylist",
+    name="PetersPictureStyler",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

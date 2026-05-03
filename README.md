@@ -11,7 +11,7 @@ Inference runs entirely through ONNX Runtime — no GPU or Python knowledge requ
 - **5 built-in styles** — Candy, Mosaic, Rain Princess, Abstract, Starry Night
 - **Tiled inference** — handles large photos without running out of memory
 - **Strength slider** — blend between original and styled result
-- **Portable exe** — single `PetersPictureStylist.exe`, no install needed
+- **Portable exe** — single `PetersPictureStyler.exe`, no install needed
 - **Extensible** — train new styles on Kaggle (free GPU) and drop them in
 
 ---
@@ -19,7 +19,7 @@ Inference runs entirely through ONNX Runtime — no GPU or Python knowledge requ
 ## Quick Start (compiled app)
 
 1. Copy the entire `dist\PetersPictureStyler\` folder to your machine
-2. Double-click `PetersPictureStylist.exe` — no Python or dependencies needed
+2. Double-click `PetersPictureStyler.exe` — no Python or dependencies needed
 3. Open a photo · pick a style · click Apply · save the result
 
 **Add a new style without recompiling:**
