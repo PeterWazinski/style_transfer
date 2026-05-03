@@ -31,6 +31,9 @@ from src.core.engine import StyleTransferEngine
 
 logging.basicConfig(level=logging.WARNING)
 
+# JPEG quality used when saving styled output images.
+JPEG_QUALITY: int = 92
+
 
 # ---------------------------------------------------------------------------
 # Command: --style-overview
@@ -210,7 +213,7 @@ def cmd_apply_style_chain(
     else:
         fname = f"{image_path.stem}_{replay_path.stem}.jpg"
     out_path = dir_out / fname
-    result.save(out_path, format="JPEG", quality=92)
+    result.save(out_path, format="JPEG", quality=JPEG_QUALITY)
     print(f"\nOK  Result written: {out_path}")
 
 
