@@ -1,4 +1,4 @@
-"""Unit tests for scripts/batch_styler.py.
+"""Unit tests for src/batch_styler/ package.
 
 Tests cover:
 - Layout constants are consistent (cell dimensions fit on a page)
@@ -25,15 +25,10 @@ import numpy as np
 import pytest
 from PIL import Image
 
-# ---------------------------------------------------------------------------
-# Ensure scripts/ is importable
-# ---------------------------------------------------------------------------
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_DIR = REPO_ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-import batch_styler as bs  # noqa: E402
+import src.batch_styler.pdf_layout as bs           # layout constants + helpers
+import src.batch_styler.catalog as bs_catalog      # catalog helpers + REPO_ROOT
+import src.batch_styler.commands as bs_commands    # command functions
+import src.batch_styler.app as bs_app              # main()
 
 
 # ---------------------------------------------------------------------------
@@ -180,18 +175,18 @@ class TestOriginalCellFirst:
 
 class TestStyleNameToFilename:
     def test_spaces_become_underscores(self) -> None:
-        assert bs._style_name_to_filename("Rain Princess") == "rain_princess"
+        assert bs_catalog._style_name_to_filename("Rain Princess") == "rain_princess"
 
     def test_already_lower(self) -> None:
-        assert bs._style_name_to_filename("candy") == "candy"
+        assert bs_catalog._style_name_to_filename("candy") == "candy"
 
     def test_special_chars_replaced(self) -> None:
-        result = bs._style_name_to_filename("Style/One:Two")
+        result = bs_catalog._style_name_to_filename("Style/One:Two")
         assert "/" not in result
         assert ":" not in result
 
     def test_output_is_non_empty(self) -> None:
-        assert bs._style_name_to_filename("X") != ""
+        assert bs_catalog._style_name_to_filename("X") != ""
 
 
 # ---------------------------------------------------------------------------
@@ -211,8 +206,8 @@ class TestListStylesForHelp:
         (tmp_path / "styles" / "catalog.json").write_text(
             json.dumps(catalog), encoding="utf-8"
         )
-        with patch.object(bs, "REPO_ROOT", tmp_path):
-            result = bs._list_styles_for_help()
+        with patch.object(bs_catalog, "REPO_ROOT", tmp_path):
+            result = bs_catalog._list_styles_for_help()
         assert "Candy" in result
         assert "Mosaic" in result
 
@@ -228,16 +223,16 @@ class TestListStylesForHelp:
         (tmp_path / "styles" / "catalog.json").write_text(
             json.dumps(catalog), encoding="utf-8"
         )
-        with patch.object(bs, "REPO_ROOT", tmp_path):
-            result = bs._list_styles_for_help()
+        with patch.object(bs_catalog, "REPO_ROOT", tmp_path):
+            result = bs_catalog._list_styles_for_help()
         apple_pos = result.index("Apple")
         zebra_pos = result.index("Zebra")
         assert apple_pos < zebra_pos
 
     def test_missing_catalog_returns_fallback(self, tmp_path: Path) -> None:
         """When catalog.json is absent a graceful fallback string is returned."""
-        with patch.object(bs, "REPO_ROOT", tmp_path):
-            result = bs._list_styles_for_help()
+        with patch.object(bs_catalog, "REPO_ROOT", tmp_path):
+            result = bs_catalog._list_styles_for_help()
         assert "catalog not found" in result
 
 
@@ -273,11 +268,11 @@ class TestMainIntegration:
         mock_engine.apply.return_value = styled_result
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            with patch("sys.argv", ["batch_styler.py", "--style-overview", str(photo)]):
-                bs.main()
+            with patch("sys.argv", ["app.py", "--style-overview", str(photo)]):
+                bs_app.main()
 
         pdf_path = tmp_path / "photo_style_overview.pdf"
         assert pdf_path.exists(), "PDF file was not created"
@@ -314,11 +309,11 @@ class TestMainIntegration:
         mock_engine.apply.return_value = _solid((50, 50, 50), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            with patch("sys.argv", ["batch_styler.py", "--style-overview", str(photo)]):
-                bs.main()
+            with patch("sys.argv", ["app.py", "--style-overview", str(photo)]):
+                bs_app.main()
 
         # Open the PDF and check page count via byte scanning
         pdf_bytes = (tmp_path / "photo_style_overview.pdf").read_bytes()
@@ -331,8 +326,8 @@ class TestMainIntegration:
         photo = tmp_path / "photo.jpg"
         _solid((100, 100, 100), size=64).save(photo)
         with pytest.raises(SystemExit) as exc_info:
-            with patch("sys.argv", ["batch_styler.py", str(photo)]):
-                bs.main()
+            with patch("sys.argv", ["app.py", str(photo)]):
+                bs_app.main()
         assert exc_info.value.code == 1
 
 
@@ -382,10 +377,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(
+            bs_commands.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
             )
@@ -404,10 +399,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(
+            bs_commands.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
             )
@@ -434,10 +429,10 @@ steps:
             encoding="utf-8",
         )
         with (
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
             pytest.raises(SystemExit),
         ):
-            bs.cmd_apply_style_chain(photo, bad_chain, tile_size=256, overlap=64, use_float16=False)
+            bs_commands.cmd_apply_style_chain(photo, bad_chain, tile_size=256, overlap=64, use_float16=False)
 
     def test_replay_strength_converted_to_float(self, tmp_path: Path) -> None:
         """Each step's integer % strength must be divided by 100 before engine.apply."""
@@ -446,10 +441,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(photo, chain, tile_size=256, overlap=64, use_float16=False)
+            bs_commands.cmd_apply_style_chain(photo, chain, tile_size=256, overlap=64, use_float16=False)
 
         # Chain has Candy @ 100% (1.0) and Mosaic @ 150% (1.5)
         first_strength = mock_engine.apply.call_args_list[0][1]["strength"]
@@ -464,10 +459,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(
+            bs_commands.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
                 strength_scale=60,
@@ -496,10 +491,10 @@ steps:
             encoding="utf-8",
         )
         with (
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
             pytest.raises(SystemExit),
         ):
-            bs.cmd_apply_style_chain(photo, invalid_chain, tile_size=None, overlap=None, use_float16=False)
+            bs_commands.cmd_apply_style_chain(photo, invalid_chain, tile_size=None, overlap=None, use_float16=False)
 
     def test_tile_settings_from_yaml_used_when_cli_none(self, tmp_path: Path) -> None:
         """tile_size/tile_overlap stored in the YAML must be passed to engine.apply."""
@@ -514,10 +509,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(photo, chain_with_tiles, tile_size=None, overlap=None, use_float16=False)
+            bs_commands.cmd_apply_style_chain(photo, chain_with_tiles, tile_size=None, overlap=None, use_float16=False)
 
         for call in mock_engine.apply.call_args_list:
             assert call[1]["tile_size"] == 768
@@ -536,10 +531,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(photo, chain_with_tiles, tile_size=512, overlap=None, use_float16=False)
+            bs_commands.cmd_apply_style_chain(photo, chain_with_tiles, tile_size=512, overlap=None, use_float16=False)
 
         for call in mock_engine.apply.call_args_list:
             assert call[1]["tile_size"] == 512   # CLI override
@@ -554,10 +549,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(
+            bs_commands.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
                 out_dir=out_dir,
@@ -575,10 +570,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(
+            bs_commands.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
                 strength_scale=88,
@@ -598,10 +593,10 @@ steps:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_apply_style_chain(
+            bs_commands.cmd_apply_style_chain(
                 photo, chain,
                 tile_size=256, overlap=64, use_float16=False,
                 strength_scale=75,
@@ -640,14 +635,14 @@ class _OldTestMainFullImage:
         mock_engine.apply.return_value = _solid((80, 80, 80), size=128)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            with patch("sys.argv", ["batch_styler.py", "--fullimage", str(photo)]):
-                bs.main()
+            with patch("sys.argv", ["app.py", "--fullimage", str(photo)]):
+                bs_app.main()
 
         for e in entries:
-            stem = bs._style_name_to_filename(e["name"])
+            stem = bs_catalog._style_name_to_filename(e["name"])
             out = tmp_path / f"photo_{stem}.jpg"
             assert out.exists(), f"Missing output: {out.name}"
             assert out.stat().st_size > 0
@@ -659,11 +654,11 @@ class _OldTestMainFullImage:
         mock_engine.apply.return_value = _solid((10, 10, 10), size=64)
 
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            with patch("sys.argv", ["batch_styler.py", "--fullimage", str(photo)]):
-                bs.main()
+            with patch("sys.argv", ["app.py", "--fullimage", str(photo)]):
+                bs_app.main()
 
         assert not (tmp_path / "photo_original.jpg").exists()
 
@@ -684,42 +679,42 @@ class TestFilterStylesByName:
         ]
 
     def test_exact_match_returns_single_entry(self) -> None:
-        result = bs.filter_styles_by_name(self._styles(), "Candy")
+        result = bs_catalog.filter_styles_by_name(self._styles(), "Candy")
         assert len(result) == 1
         assert result[0]["name"] == "Candy"
 
     def test_case_insensitive_match(self) -> None:
-        result = bs.filter_styles_by_name(self._styles(), "anime hayao")
+        result = bs_catalog.filter_styles_by_name(self._styles(), "anime hayao")
         assert result[0]["name"] == "Anime Hayao"
 
     def test_uppercase_query(self) -> None:
-        result = bs.filter_styles_by_name(self._styles(), "MOSAIC")
+        result = bs_catalog.filter_styles_by_name(self._styles(), "MOSAIC")
         assert result[0]["name"] == "Mosaic"
 
     def test_leading_trailing_whitespace_stripped(self) -> None:
-        result = bs.filter_styles_by_name(self._styles(), "  Candy  ")
+        result = bs_catalog.filter_styles_by_name(self._styles(), "  Candy  ")
         assert result[0]["name"] == "Candy"
 
     def test_unknown_style_aborts_with_exit(self) -> None:
         with pytest.raises(SystemExit) as exc_info:
-            bs.filter_styles_by_name(self._styles(), "NonExistent")
+            bs_catalog.filter_styles_by_name(self._styles(), "NonExistent")
         assert exc_info.value.code is not None
 
     def test_error_message_contains_style_name(self) -> None:
         with pytest.raises(SystemExit) as exc_info:
-            bs.filter_styles_by_name(self._styles(), "Ghost")
+            bs_catalog.filter_styles_by_name(self._styles(), "Ghost")
         assert "Ghost" in str(exc_info.value.code)
 
     def test_error_message_lists_available_styles(self) -> None:
         with pytest.raises(SystemExit) as exc_info:
-            bs.filter_styles_by_name(self._styles(), "Ghost")
+            bs_catalog.filter_styles_by_name(self._styles(), "Ghost")
         msg = str(exc_info.value.code)
         assert "Candy" in msg
         assert "Mosaic" in msg
 
     def test_empty_catalog_aborts(self) -> None:
         with pytest.raises(SystemExit):
-            bs.filter_styles_by_name([], "Candy")
+            bs_catalog.filter_styles_by_name([], "Candy")
 
 
 # ---------------------------------------------------------------------------
@@ -759,13 +754,13 @@ class TestMainStyleFilter:
         ) -> None:
             called.extend(s["name"] for s in styles)
 
-        argv = ["batch_styler.py", "--style-overview", str(photo), "--apply-style", "Udnie"]
+        argv = ["app.py", "--style-overview", str(photo), "--apply-style", "Udnie"]
         with (
-            patch.object(bs, "REPO_ROOT", tmp_path),
-            patch.object(bs, "cmd_style_overview", side_effect=_fake_pdf),
+            patch.object(bs_catalog, "REPO_ROOT", tmp_path),
+            patch.object(bs_app, "cmd_style_overview", side_effect=_fake_pdf),
         ):
             with patch("sys.argv", argv):
-                bs.main()
+                bs_app.main()
 
         assert called == ["Udnie"]
 
@@ -776,13 +771,13 @@ class TestMainStyleFilter:
         def _fake_pdf(image_path: Path, styles: list[dict], **kw: object) -> None:
             called.extend(s["name"] for s in styles)
 
-        argv = ["batch_styler.py", "--style-overview", str(photo)]
+        argv = ["app.py", "--style-overview", str(photo)]
         with (
-            patch.object(bs, "REPO_ROOT", tmp_path),
-            patch.object(bs, "cmd_style_overview", side_effect=_fake_pdf),
+            patch.object(bs_catalog, "REPO_ROOT", tmp_path),
+            patch.object(bs_app, "cmd_style_overview", side_effect=_fake_pdf),
         ):
             with patch("sys.argv", argv):
-                bs.main()
+                bs_app.main()
 
         assert called == ["Candy", "Mosaic", "Udnie"]
 
@@ -811,8 +806,8 @@ class _SkippedApplyAllStyles:
         mock_engine.apply.return_value = _solid((100, 100, 100), size=32)
         mock_engine._sessions = {}
 
-        with patch('batch_styler.StyleTransferEngine', return_value=mock_engine):
-            with patch('batch_styler.REPO_ROOT', tmp_path):
+        with patch('src.batch_styler.commands.StyleTransferEngine', return_value=mock_engine):
+            with patch('src.batch_styler.catalog.REPO_ROOT', tmp_path):
                 bs._apply_all_styles(
                     source=_solid((50, 50, 50), size=32),
                     styles=styles,
@@ -844,8 +839,8 @@ class _SkippedApplyAllStyles:
         mock_engine.apply.return_value = _solid((100, 100, 100), size=32)
         mock_engine._sessions = {}
 
-        with patch('batch_styler.StyleTransferEngine', return_value=mock_engine):
-            with patch('batch_styler.REPO_ROOT', tmp_path):
+        with patch('src.batch_styler.commands.StyleTransferEngine', return_value=mock_engine):
+            with patch('src.batch_styler.catalog.REPO_ROOT', tmp_path):
                 bs._apply_all_styles(
                     source=_solid((50, 50, 50), size=32),
                     styles=styles,
@@ -878,8 +873,8 @@ class _SkippedApplyAllStyles:
         mock_engine.apply.return_value = _solid((100, 100, 100), size=32)
         mock_engine._sessions = {}
 
-        with patch('batch_styler.StyleTransferEngine', return_value=mock_engine):
-            with patch('batch_styler.REPO_ROOT', tmp_path):
+        with patch('src.batch_styler.commands.StyleTransferEngine', return_value=mock_engine):
+            with patch('src.batch_styler.catalog.REPO_ROOT', tmp_path):
                 bs._apply_all_styles(
                     source=_solid((50, 50, 50), size=32),
                     styles=styles,
@@ -928,10 +923,10 @@ class TestStyleChainOverview:
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+            bs_commands.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
         # 3 chains × 1 step each = 3 apply calls
         assert mock_engine.apply.call_count == 3
 
@@ -941,10 +936,10 @@ class TestStyleChainOverview:
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+            bs_commands.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
         expected = tmp_path / f"photo_{chain_dir.name}_overview.pdf"
         assert expected.exists(), f"PDF not found: {expected.name}"
         assert expected.stat().st_size > 1000
@@ -958,10 +953,10 @@ class TestStyleChainOverview:
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_style_chain_overview(
+            bs_commands.cmd_style_chain_overview(
                 photo, chain_dir, tile_size=256, overlap=64, use_float16=False, out_dir=out_dir,
             )
         expected = out_dir / f"photo_{chain_dir.name}_overview.pdf"
@@ -972,10 +967,10 @@ class TestStyleChainOverview:
         """An empty chain directory exits with a non-zero code."""
         photo, chain_dir = self._setup(tmp_path, n_chains=0)
         with (
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
             pytest.raises(SystemExit),
         ):
-            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+            bs_commands.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
 
     def test_chain_overview_invalid_chain_skipped(self, tmp_path: Path) -> None:
         """Invalid-schema chain is skipped; valid chains still produce a PDF."""
@@ -986,10 +981,10 @@ class TestStyleChainOverview:
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+            bs_commands.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
         # Only 1 valid chain → 1 apply call
         assert mock_engine.apply.call_count == 1
         assert (tmp_path / f"photo_{chain_dir.name}_overview.pdf").exists()
@@ -1003,10 +998,10 @@ class TestStyleChainOverview:
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+            bs_commands.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
         # Only 1 valid chain → 1 apply call
         assert mock_engine.apply.call_count == 1
 
@@ -1016,10 +1011,10 @@ class TestStyleChainOverview:
         mock_engine = MagicMock()
         mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
         with (
-            patch("batch_styler.StyleTransferEngine", return_value=mock_engine),
-            patch("batch_styler.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
         ):
-            bs.cmd_style_chain_overview(
+            bs_commands.cmd_style_chain_overview(
                 photo, chain_dir, tile_size=256, overlap=64, use_float16=False, strength_scale=50,
             )
         strength_used = mock_engine.apply.call_args_list[0][1]["strength"]
@@ -1039,9 +1034,9 @@ class TestApplyStyleRejectedWithApplyStyleChain:
         chain.write_text("version: 1\nsteps: []\n", encoding="utf-8")
         with pytest.raises(SystemExit) as exc_info:
             with patch("sys.argv", [
-                "batch_styler.py", "--apply-style-chain", str(chain),
+                "app.py", "--apply-style-chain", str(chain),
                 str(photo), "--apply-style", "Candy",
             ]):
-                bs.main()
+                bs_app.main()
         assert exc_info.value.code != 0
 

@@ -78,7 +78,7 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # ── Analysis for BatchStyler (headless CLI, no Qt) ───────────────────────
 b = Analysis(
-    ["scripts/batch_styler.py"],
+    ["src/batch_styler/app.py"],
     pathex=["."],
     binaries=ort_binaries,
     datas=[*ort_datas],

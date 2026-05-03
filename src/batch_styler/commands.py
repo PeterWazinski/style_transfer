@@ -1,0 +1,298 @@
+"""Batch style-transfer command implementations.
+
+All commands access REPO_ROOT via ``_catalog.REPO_ROOT`` (module-attribute
+lookup) so that a single ``patch("src.batch_styler.catalog.REPO_ROOT", ...)``
+in tests covers this module as well.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import sys
+from pathlib import Path
+
+from PIL import Image
+
+import src.batch_styler.catalog as _catalog
+from src.batch_styler.pdf_layout import (
+    CHAIN_ROWS,
+    CELLS_PER_PAGE,
+    DPI,
+    LABEL_H,
+    PDF_STRENGTHS,
+    _blend_to_strength,
+    _fit_into,
+    _load_font,
+    _make_chain_page,
+    _make_page,
+    build_cell_list,
+)
+from src.core.engine import StyleTransferEngine
+
+logging.basicConfig(level=logging.WARNING)
+
+
+# ---------------------------------------------------------------------------
+# Command: --style-overview
+# ---------------------------------------------------------------------------
+
+def cmd_style_overview(
+    image_path: Path,
+    styles: list[dict],
+    tile_size: int,
+    overlap: int,
+    strength: float,  # noqa: ARG001 — ignored; style_overview uses PDF_STRENGTHS
+    use_float16: bool,
+    out_dir: Path | None = None,
+) -> None:
+    """Apply all styles at each PDF_STRENGTHS level and write a DIN-A4-landscape PDF."""
+    source = Image.open(image_path).convert("RGB")
+    engine = StyleTransferEngine()
+
+    styles_sorted = sorted(styles, key=lambda s: s.get("name", s["id"]).casefold())
+
+    cells: list[tuple[str, Image.Image | None]] = [
+        ("Original", source.copy()),
+        ("", None),
+        ("", None),
+    ]
+    n_applied: int = 0
+
+    for style in styles_sorted:
+        style_id:   str  = style["id"]
+        style_name: str  = style.get("name", style_id)
+        model_path: Path = _catalog.REPO_ROOT / style["model_path"]
+
+        if not model_path.exists():
+            print(f"  Skipping '{style_name}' — model not found: {model_path}")
+            continue
+
+        tensor_layout: str = style.get("tensor_layout", "nchw")
+        print(f"Processing style '{style_name}' ...", flush=True)
+        try:
+            engine.load_model(style_id, model_path, tensor_layout=tensor_layout)
+            styled_full = engine.apply(
+                source,
+                style_id,
+                strength=1.0,
+                tile_size=tile_size,
+                overlap=overlap,
+                use_float16=use_float16,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"  Error applying '{style_name}': {exc}")
+            continue
+        finally:
+            engine.unload_model(style_id)
+
+        for s in PDF_STRENGTHS:
+            label = f"{style_name} ({int(s * 100)}%)"
+            cells.append((label, _blend_to_strength(source, styled_full, s)))
+        n_applied += 1
+
+    if n_applied == 0:
+        sys.exit("No styles were applied successfully — nothing to write.")
+
+    font = _load_font(int(LABEL_H * 0.60))
+    n_pages = (len(cells) + CELLS_PER_PAGE - 1) // CELLS_PER_PAGE
+    print(f"\nComposing {n_pages} PDF page(s) ...", flush=True)
+
+    pages: list[Image.Image] = []
+    for i in range(0, len(cells), CELLS_PER_PAGE):
+        pages.append(_make_page(cells[i : i + CELLS_PER_PAGE], font))
+
+    dir_out = out_dir if out_dir is not None else image_path.parent
+    pdf_path = dir_out / (image_path.stem + "_style_overview.pdf")
+    pages[0].save(
+        pdf_path,
+        format="PDF",
+        save_all=True,
+        append_images=pages[1:],
+        resolution=DPI,
+    )
+
+    print(
+        f"\nOK  PDF written: {pdf_path}"
+        f"  ({len(pages)} page(s), {n_applied} style(s) × {len(PDF_STRENGTHS)} strengths + original)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Command: --apply-style-chain
+# ---------------------------------------------------------------------------
+
+def _apply_chain_to_image(
+    source: Image.Image,
+    chain,  # ReplayLog
+    styles: list[dict],
+    engine: StyleTransferEngine,
+    tile_size: int,
+    overlap: int,
+    use_float16: bool,
+    strength_scale: int | None,
+) -> Image.Image:
+    """Apply all steps of *chain* to *source* and return the final result."""
+    result = source.copy()
+    for step in chain.steps:
+        matched = _catalog.filter_styles_by_name(styles, step.style)
+        catalog_style = matched[0]
+        model_path = _catalog.REPO_ROOT / catalog_style["model_path"]
+        if strength_scale is not None:
+            effective_pct = min(300, round(step.strength * strength_scale / 100))
+        else:
+            effective_pct = step.strength
+        strength = effective_pct / 100.0
+        tensor_layout: str = catalog_style.get("tensor_layout", "nchw")
+        engine.load_model(catalog_style["id"], model_path, tensor_layout=tensor_layout)
+        result = engine.apply(
+            result, catalog_style["id"],
+            strength=strength, tile_size=tile_size, overlap=overlap, use_float16=use_float16,
+        )
+        engine.unload_model(catalog_style["id"])
+    return result
+
+
+def cmd_apply_style_chain(
+    image_path: Path,
+    replay_path: Path,
+    tile_size: int | None,
+    overlap: int | None,
+    use_float16: bool,
+    strength_scale: int | None = None,
+    out_dir: Path | None = None,
+) -> None:
+    """Apply a saved style-chain YAML to *image_path*, step by step."""
+    from src.core.style_chain_schema import load_style_chain  # noqa: PLC0415
+
+    try:
+        replay = load_style_chain(replay_path)
+    except ValueError as exc:
+        sys.exit(f"Error: {exc}")
+
+    effective_tile_size: int = tile_size if tile_size is not None else (replay.tile_size if replay.tile_size is not None else 1024)
+    effective_overlap: int = overlap if overlap is not None else (replay.tile_overlap if replay.tile_overlap is not None else 128)
+
+    catalog_path = _catalog.REPO_ROOT / "styles" / "catalog.json"
+    if not catalog_path.exists():
+        sys.exit(f"Error: catalog not found: {catalog_path}")
+
+    with open(catalog_path, encoding="utf-8") as f:
+        catalog: dict = json.load(f)
+    styles: list[dict] = catalog.get("styles", [])
+
+    unknown = []
+    for step in replay.steps:
+        needle = step.style.strip().casefold()
+        if not any(s.get("name", "").casefold() == needle for s in styles):
+            unknown.append(step.style)
+    if unknown:
+        sys.exit("Error: the following style(s) were not found in the catalog:\n" +
+                 "\n".join(f"  - {n}" for n in unknown))
+
+    print(f"Tile size    : {effective_tile_size} px  overlap: {effective_overlap} px")
+    print()
+
+    engine = StyleTransferEngine()
+    source = Image.open(image_path).convert("RGB")
+
+    print(f"Applying {len(replay.steps)} step(s) ...", flush=True)
+    result = _apply_chain_to_image(
+        source, replay, styles, engine,
+        tile_size=effective_tile_size,
+        overlap=effective_overlap,
+        use_float16=use_float16,
+        strength_scale=strength_scale,
+    )
+
+    dir_out = out_dir if out_dir is not None else image_path.parent
+    if strength_scale is not None:
+        fname = f"{image_path.stem}_{replay_path.stem}_{strength_scale}.jpg"
+    else:
+        fname = f"{image_path.stem}_{replay_path.stem}.jpg"
+    out_path = dir_out / fname
+    result.save(out_path, format="JPEG", quality=92)
+    print(f"\nOK  Result written: {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# Command: --style-chain-overview
+# ---------------------------------------------------------------------------
+
+def cmd_style_chain_overview(
+    image_path: Path,
+    chain_dir: Path,
+    tile_size: int | None,
+    overlap: int | None,
+    use_float16: bool,
+    strength_scale: int | None = None,
+    out_dir: Path | None = None,
+) -> None:
+    """Apply all .yml chains in *chain_dir* and write a portrait A4 PDF overview."""
+    from src.core.style_chain_schema import load_style_chain  # noqa: PLC0415
+
+    chain_files = sorted(chain_dir.glob("*.yml")) + sorted(chain_dir.glob("*.yaml"))
+    chain_files = sorted(set(chain_files))
+    if not chain_files:
+        sys.exit(f"Error: no .yml/.yaml files found in {chain_dir}")
+
+    catalog_path = _catalog.REPO_ROOT / "styles" / "catalog.json"
+    if not catalog_path.exists():
+        sys.exit(f"Error: catalog not found: {catalog_path}")
+    with open(catalog_path, encoding="utf-8") as f:
+        catalog: dict = json.load(f)
+    styles: list[dict] = catalog.get("styles", [])
+
+    effective_tile_size: int = tile_size if tile_size is not None else 1024
+    effective_overlap: int = overlap if overlap is not None else 128
+
+    source = Image.open(image_path).convert("RGB")
+    engine = StyleTransferEngine()
+
+    cells: list[tuple[str, Image.Image]] = [("Original", source.copy())]
+
+    for chain_file in chain_files:
+        try:
+            chain = load_style_chain(chain_file)
+        except ValueError as exc:
+            print(f"  Warning: skipping '{chain_file.name}' — invalid schema: {exc}")
+            continue
+        unknown = []
+        for step in chain.steps:
+            needle = step.style.strip().casefold()
+            if not any(s.get("name", "").casefold() == needle for s in styles):
+                unknown.append(step.style)
+        if unknown:
+            print(f"  Warning: skipping '{chain_file.name}' — unknown style(s): {', '.join(unknown)}")
+            continue
+        print(f"Applying chain '{chain_file.stem}' ...", flush=True)
+        try:
+            result = _apply_chain_to_image(
+                source, chain, styles, engine,
+                tile_size=effective_tile_size,
+                overlap=effective_overlap,
+                use_float16=use_float16,
+                strength_scale=strength_scale,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"  Warning: skipping '{chain_file.name}' — error during apply: {exc}")
+            continue
+        cells.append((chain_file.stem, result))
+
+    if len(cells) <= 1:
+        sys.exit("No chains were applied successfully — nothing to write.")
+
+    font = _load_font(int(LABEL_H * 0.60))
+    pages: list[Image.Image] = []
+    for i in range(0, len(cells), CHAIN_ROWS):
+        pages.append(_make_chain_page(cells[i : i + CHAIN_ROWS], font))
+
+    dir_out = out_dir if out_dir is not None else image_path.parent
+    pdf_path = dir_out / f"{image_path.stem}_{chain_dir.name}_overview.pdf"
+    pages[0].save(
+        pdf_path,
+        format="PDF",
+        save_all=True,
+        append_images=pages[1:],
+        resolution=DPI,
+    )
+    print(f"\nOK  PDF written: {pdf_path}  ({len(pages)} page(s), {len(cells) - 1} chain(s))")
