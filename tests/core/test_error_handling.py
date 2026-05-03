@@ -90,6 +90,32 @@ class TestOOMError:
         with pytest.raises(OOMError, match="Out of memory"):
             engine.apply(img, "test-style", tile_size=64, overlap=0)
 
+    def test_oom_logged_to_app_log(self) -> None:
+        """Raw MemoryError is logged at ERROR level before OOMError is raised."""
+        engine = _engine_with_mock_style(raise_oom=True)
+        img = Image.fromarray(np.zeros((128, 128, 3), dtype=np.uint8))
+        with patch("src.core.engine.logger") as mock_logger:
+            with pytest.raises(OOMError):
+                engine.apply(img, "test-style", tile_size=64, overlap=0)
+        mock_logger.error.assert_called_once()
+        log_msg = mock_logger.error.call_args[0][0]
+        assert "OOM" in log_msg
+
+    def test_gpu_oom_exception_logged_and_raised(self) -> None:
+        """ONNX Exception containing 'out of memory' is logged and re-raised as OOMError."""
+        engine = _engine_with_mock_style(raise_oom=False)
+        # Replace the session's run() with one that raises a GPU-style OOM exception
+        engine._sessions["test-style"].run.side_effect = Exception(
+            "OnnxRuntimeError: error code: 6, DirectML out of memory"
+        )
+        img = Image.fromarray(np.zeros((128, 128, 3), dtype=np.uint8))
+        with patch("src.core.engine.logger") as mock_logger:
+            with pytest.raises(OOMError, match="GPU/DirectML out of memory"):
+                engine.apply(img, "test-style", tile_size=64, overlap=0)
+        mock_logger.error.assert_called_once()
+        raw_msg = str(mock_logger.error.call_args[0][1])
+        assert "error code: 6" in raw_msg.lower() or "out of memory" in raw_msg.lower()
+
 
 # ---------------------------------------------------------------------------
 # UnsupportedFormatError

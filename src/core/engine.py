@@ -150,6 +150,25 @@ class StyleTransferEngine:
     # Core inference helpers
     # ------------------------------------------------------------------
 
+    def _reraise_if_oom(
+        self,
+        exc: Exception,
+        tile_size: tuple[int, int],
+    ) -> None:
+        """Log the raw ONNX error and re-raise as OOMError if it signals OOM.
+
+        Call from the ``except Exception`` block of every inference method so
+        that the exact DirectML / CUDA error wording is always written to
+        ``app.log`` before the user-friendly OOMError is raised.
+        """
+        _msg = str(exc).lower()
+        if any(k in _msg for k in ("out of memory", "insufficient", "oom", ": 6 :", "error code: 6")):
+            logger.error("OOM — raw ONNX error: %s", exc)
+            raise OOMError(
+                f"GPU/DirectML out of memory processing a tile of size {tile_size}. "
+                "Open a new photo or reduce tile_size in Settings to free memory."
+            ) from exc
+
     def _infer_tile(
         self,
         session: "ort.InferenceSession",
@@ -185,17 +204,13 @@ class StyleTransferEngine:
             input_name: str = session.get_inputs()[0].name
             output: list[np.ndarray] = session.run(None, {input_name: tensor})
         except MemoryError as exc:
+            logger.error("OOM — MemoryError: %s", exc)
             raise OOMError(
                 f"Out of memory processing a tile of size {tile.size}. "
                 "Try reducing tile_size in Settings."
             ) from exc
         except Exception as exc:  # noqa: BLE001
-            _msg = str(exc).lower()
-            if any(k in _msg for k in ("out of memory", "insufficient", "oom", ": 6 :", "error code: 6")):
-                raise OOMError(
-                    f"GPU/DirectML out of memory processing a tile of size {tile.size}. "
-                    "Open a new photo or reduce tile_size in Settings to free memory."
-                ) from exc
+            self._reraise_if_oom(exc, tile.size)
             raise
         styled = np.clip(output[0][0].transpose(1, 2, 0), 0, 255).astype(np.uint8)
         result = Image.fromarray(styled)
@@ -237,17 +252,13 @@ class StyleTransferEngine:
             input_name: str = session.get_inputs()[0].name
             output: list[np.ndarray] = session.run(None, {input_name: tensor})
         except MemoryError as exc:
+            logger.error("OOM — MemoryError: %s", exc)
             raise OOMError(
                 f"Out of memory processing a tile of size {tile.size}. "
                 "Try reducing tile_size in Settings."
             ) from exc
         except Exception as exc:  # noqa: BLE001
-            _msg = str(exc).lower()
-            if any(k in _msg for k in ("out of memory", "insufficient", "oom", ": 6 :", "error code: 6")):
-                raise OOMError(
-                    f"GPU/DirectML out of memory processing a tile of size {tile.size}. "
-                    "Open a new photo or reduce tile_size in Settings to free memory."
-                ) from exc
+            self._reraise_if_oom(exc, tile.size)
             raise
         # De-normalise from [-1, 1] to [0, 255]
         result_arr = np.clip(
@@ -279,17 +290,13 @@ class StyleTransferEngine:
             input_name: str = session.get_inputs()[0].name
             output: list[np.ndarray] = session.run(None, {input_name: tensor})
         except MemoryError as exc:
+            logger.error("OOM — MemoryError: %s", exc)
             raise OOMError(
                 f"Out of memory processing a tile of size {tile.size}. "
                 "Try reducing tile_size in Settings."
             ) from exc
         except Exception as exc:  # noqa: BLE001
-            _msg = str(exc).lower()
-            if any(k in _msg for k in ("out of memory", "insufficient", "oom", ": 6 :", "error code: 6")):
-                raise OOMError(
-                    f"GPU/DirectML out of memory processing a tile of size {tile.size}. "
-                    "Open a new photo or reduce tile_size in Settings to free memory."
-                ) from exc
+            self._reraise_if_oom(exc, tile.size)
             raise
         # De-normalise from [-1, 1] to [0, 255]; output is [1, 3, H, W]
         result_arr = np.clip(
