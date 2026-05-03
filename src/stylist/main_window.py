@@ -18,7 +18,6 @@ Layout
 from __future__ import annotations
 
 import logging
-import sys
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,20 +25,13 @@ from typing import Optional
 
 from PIL.Image import Image as PILImage
 from PySide6.QtGui import QAction, QPixmap
-from PySide6.QtCore import Qt, QEventLoop
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication,
-    QDialog,
     QDockWidget,
     QFileDialog,
-    QLabel,
     QMainWindow,
     QMessageBox,
-    QProgressDialog,
-    QPushButton,
-    QScrollArea,
     QStatusBar,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -47,26 +39,16 @@ from src.core.engine import StyleTransferEngine
 from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.registry import StyleRegistry
-from src.core.style_chain_schema import load_style_chain, dump_style_chain, ReplayLog, ReplayStep
 from src.core.settings import AppSettings
-from src.stylist.apply_worker import ApplyWorker, is_gpu_crash as _is_gpu_crash
+from src.stylist.apply_controller import ApplyController
+from src.stylist.help_dialogs import show_how_to_use, show_about_nst, show_credits
 from src.stylist.photo_canvas import PhotoCanvasView
 from src.stylist.settings_dialog import SettingsDialog
+from src.stylist.style_chain_controller import StyleChainController
 from src.stylist.style_gallery import StyleGalleryView
+from src.stylist._utils import _get_project_root
 
 logger: logging.Logger = logging.getLogger(__name__)
-
-
-def _get_project_root() -> Path:
-    """Return the project root for resolving relative model paths.
-
-    When frozen (PyInstaller), the root is the directory that contains the
-    executable (i.e. ``dist/PetersPictureStyler/``).  In development the root
-    is three levels above this file (``src/stylist/main_window.py`` → repo root).
-    """
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent.parent
 
 
 @dataclass
@@ -79,7 +61,7 @@ class _UndoSnapshot:
     has_styled: bool
 
 
-class MainWindow(QMainWindow):
+class MainWindow(ApplyController, StyleChainController, QMainWindow):
     """Top-level application window.
 
     Args:
@@ -320,100 +302,6 @@ class MainWindow(QMainWindow):
         )
 
     # ------------------------------------------------------------------
-    # Progress dialog helpers
-    # ------------------------------------------------------------------
-
-    def _create_progress_dialog(self, label: str = "Processing tiles\u2026") -> QProgressDialog:
-        """Return a modal :class:`QProgressDialog` centred over this window.
-
-        A *Cancel* button is shown; it requests interruption of the worker
-        thread (wired in :meth:`_run_apply_worker`).  The dialog only becomes
-        visible after 400 ms so it does not flash for tiny images.
-        """
-        dlg = QProgressDialog(label, "Cancel", 0, 100, self)
-        dlg.setWindowTitle("Applying Style")
-        dlg.setWindowModality(Qt.WindowModality.WindowModal)
-        dlg.setMinimumDuration(400)
-        dlg.setAutoClose(False)
-        dlg.setAutoReset(False)
-        dlg.setValue(0)
-        return dlg
-
-    def _run_apply_worker(
-        self,
-        source: PILImage,
-        style_id: str,
-        strength: float,
-        dlg: QProgressDialog,
-    ) -> PILImage | None:
-        """Run :class:`ApplyWorker` in a background thread and wait for it.
-
-        A local :class:`QEventLoop` is executed while the worker is running so
-        the main event loop stays alive (the dialog repaints, the Cancel button
-        responds).  Returns the styled :class:`PIL.Image` on success, or
-        ``None`` on cancellation or error.  Errors are shown in a
-        :class:`QMessageBox` before returning.
-        """
-        worker = ApplyWorker(
-            engine=self.engine,
-            source=source,
-            style_id=style_id,
-            strength=strength,
-            tile_size=self._settings.tile_size,
-            overlap=self._settings.overlap,
-            use_float16=self._settings.use_float16,
-        )
-
-        result_holder: list[PILImage | None] = [None]
-        error_holder: list[str | None] = [None]
-        cancelled_holder: list[bool] = [False]
-        loop = QEventLoop()
-
-        def _on_progress(done: int, total: int) -> None:
-            if total > 0:
-                dlg.setValue(int(done / total * 100))
-
-        def _on_finished(img: PILImage) -> None:
-            result_holder[0] = img
-            loop.quit()
-
-        def _on_error(msg: str) -> None:
-            error_holder[0] = msg
-            loop.quit()
-
-        def _on_cancelled() -> None:
-            cancelled_holder[0] = True
-            loop.quit()
-
-        worker.progress.connect(_on_progress)
-        worker.finished.connect(_on_finished)
-        worker.error.connect(_on_error)
-        worker.cancelled.connect(_on_cancelled)
-        # Wire Cancel button → request interruption in the worker thread.
-        dlg.canceled.connect(worker.requestInterruption)
-
-        worker.start()
-        loop.exec()
-        worker.wait()   # ensure thread has fully exited before we continue
-
-        if cancelled_holder[0]:
-            return None
-        if error_holder[0]:
-            msg = error_holder[0]
-            logger.error("Style transfer error: %s", msg)
-            if _is_gpu_crash(msg):
-                QMessageBox.critical(self, "GPU Driver Error", msg)
-                _restart_tip = "GPU driver crashed — please restart the application."
-                self.canvas.apply_button.setEnabled(False)
-                self.canvas.apply_button.setToolTip(_restart_tip)
-                self.canvas.reapply_button.setEnabled(False)
-                self.canvas.reapply_button.setToolTip(_restart_tip)
-            else:
-                QMessageBox.critical(self, "Apply Error", msg)
-            return None
-        return result_holder[0]
-
-    # ------------------------------------------------------------------
     # Undo stack
     # ------------------------------------------------------------------
 
@@ -458,104 +346,8 @@ class MainWindow(QMainWindow):
         self._status.showMessage("Undo.")
 
     # ------------------------------------------------------------------
-    # Apply / Re-Apply
+    # Save result
     # ------------------------------------------------------------------
-
-    def _reapply_style(self, style_id: str, strength: float) -> None:
-        """Apply *style_id* to the already-styled photo (chain styles)."""
-        source_photo = self._styled_photo
-        if source_photo is None:
-            return
-        self._status.showMessage("Re-applying style\u2026")
-        self.canvas.apply_button.setEnabled(False)
-        self.canvas.reapply_button.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
-        dlg = self._create_progress_dialog("Re-applying style\u2026")
-        try:
-            result = self._run_apply_worker(source_photo, style_id, strength, dlg)
-        finally:
-            dlg.close()
-            QApplication.restoreOverrideCursor()
-            self.canvas.apply_button.setEnabled(True)
-            self.canvas.reapply_button.setEnabled(True)
-        if result is None:
-            self._status.showMessage("Re-apply cancelled." if dlg.wasCanceled() else "Error during style transfer.")
-            return
-        # Push undo snapshot before overwriting state
-        self._push_undo_snapshot()
-        # Append to replay log
-        self._replay_log.append({"style": self._current_style_name, "strength": int(strength * 100)})
-        # Show the previous styled result on the left for comparison
-        self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(source_photo))
-        self._left_pane_pil = source_photo        # update PIL mirror of left pane
-        self._styled_photo_input = source_photo   # the input to this new chain step
-        self._styled_photo = result
-        self.canvas.set_styled(self._pil_to_pixmap(result))
-        self._save_action.setEnabled(True)
-        self._status.showMessage("Style re-applied.")
-
-    def _reapply_style_strength(self, style_id: str, strength: float) -> None:
-        """Re-run the current chain step with a new strength.
-
-        Unlike :meth:`_reapply_style` (Re-Apply button) this does *not* advance
-        the chain: the left pane keeps showing p_{n-1} and the right pane is
-        updated with the new result.  ``_styled_photo_input`` (p_{n-1}) is
-        re-used as the source so the slider never "eats" a chain step.
-        """
-        source = self._styled_photo_input
-        if source is None:
-            # Fallback: no recorded input yet — treat like a normal apply
-            self._apply_style(style_id, strength)
-            return
-        self._status.showMessage("Adjusting strength\u2026")
-        self.canvas.apply_button.setEnabled(False)
-        self.canvas.reapply_button.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
-        dlg = self._create_progress_dialog("Adjusting strength\u2026")
-        try:
-            result = self._run_apply_worker(source, style_id, strength, dlg)
-        finally:
-            dlg.close()
-            QApplication.restoreOverrideCursor()
-            self.canvas.apply_button.setEnabled(True)
-            self.canvas.reapply_button.setEnabled(True)
-        if result is None:
-            self._status.showMessage("Adjustment cancelled." if dlg.wasCanceled() else "Error during style transfer.")
-            return
-        # Keep the left pane unchanged — only update the right pane & buffer
-        self._styled_photo = result
-        # Update the last replay log entry with the new strength
-        if self._replay_log:
-            self._replay_log[-1]["strength"] = int(strength * 100)
-        self.canvas.set_styled(self._pil_to_pixmap(result))
-        self._save_action.setEnabled(True)
-        self._status.showMessage("Strength adjusted.")
-
-    def _apply_style(self, style_id: str, strength: float) -> None:
-        if self._current_photo is None:
-            return
-        self._status.showMessage("Applying style\u2026")
-        self.canvas.apply_button.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.WaitCursor)  # type: ignore[attr-defined]
-        dlg = self._create_progress_dialog()
-        try:
-            result = self._run_apply_worker(self._current_photo, style_id, strength, dlg)
-        finally:
-            dlg.close()
-            QApplication.restoreOverrideCursor()
-            self.canvas.apply_button.setEnabled(True)
-        if result is None:
-            self._status.showMessage("Apply cancelled." if dlg.wasCanceled() else "Error during style transfer.")
-            return
-        # Push undo snapshot before overwriting state
-        self._push_undo_snapshot()
-        # Apply always starts a new chain from the original photo
-        self._replay_log = [{"style": self._current_style_name, "strength": int(strength * 100)}]
-        self._styled_photo_input = self._current_photo   # record what fed this result
-        self._styled_photo = result
-        self.canvas.set_styled(self._pil_to_pixmap(result))
-        self._save_action.setEnabled(True)
-        self._status.showMessage("Style applied.")
 
     def _save_result(self) -> None:
         if self._styled_photo is None:
@@ -590,230 +382,17 @@ class MainWindow(QMainWindow):
             self._status.showMessage(f"Saved to: {path.name}")
 
     # ------------------------------------------------------------------
-    # Replay log
+    # Help dialogs (delegates to src.stylist.help_dialogs)
     # ------------------------------------------------------------------
 
-    def _format_style_chain(self) -> str:
-        """Serialise the current style chain to a YAML string."""
-        chain = ReplayLog(
-            tile_size=self._settings.tile_size,
-            tile_overlap=self._settings.overlap,
-            steps=[ReplayStep(style=s["style"], strength=s["strength"])  # type: ignore[arg-type]
-                   for s in self._replay_log],
-        )
-        return dump_style_chain(chain)
-
-    def _copy_style_chain_to_clipboard(self) -> None:
-        if not self._replay_log:
-            QMessageBox.information(self, "Style Chain", "No styles applied yet \u2014 nothing to copy.")
-            return
-        QApplication.clipboard().setText(self._format_style_chain())
-        self._status.showMessage("Style chain copied to clipboard.")
-
-    def _resolve_style_id_by_name(self, style_name: str) -> str | None:
-        """Return the style id for the given display name (case-insensitive), or None."""
-        needle = style_name.casefold()
-        for style in self.registry.list_styles():
-            if style.name.casefold() == needle:
-                return style.id
-        return None
-
-    def _apply_style_chain(self) -> None:
-        if self._current_photo is None:
-            QMessageBox.information(self, "Apply Style Chain", "Open a photo first.")
-            return
-        start_dir = self._settings.last_save_dir or self._settings.default_output_dir or ""
-        path_str, _ = QFileDialog.getOpenFileName(
-            self, "Apply Style Chain", start_dir, "YAML style chain (*.yml *.yaml)"
-        )
-        if not path_str:
-            return
-        try:
-            replay = load_style_chain(Path(path_str))
-        except ValueError as exc:
-            QMessageBox.critical(self, "Apply Style Chain", str(exc))
-            return
-        # Pre-flight: resolve ALL style names before touching the canvas
-        unknown: list[str] = [
-            step.style for step in replay.steps
-            if self._resolve_style_id_by_name(step.style) is None
-        ]
-        if unknown:
-            names = "\n".join(f"  \u2022 {n}" for n in unknown)
-            QMessageBox.critical(
-                self, "Apply Style Chain",
-                "The following styles were not found in the catalog:\n" + names +
-                "\n\nChain aborted.",
-            )
-            return
-        # Apply tile settings from the log if present
-        if replay.tile_size is not None:
-            try:
-                self._settings.tile_size = replay.tile_size
-            except (ValueError, AttributeError):
-                pass  # ignore invalid value — keep current setting
-        if replay.tile_overlap is not None:
-            try:
-                self._settings.overlap = replay.tile_overlap
-            except (ValueError, AttributeError):
-                pass  # ignore invalid value
-        # Reset image state, then apply each step in sequence
-        self._styled_photo = None
-        self._styled_photo_input = None
-        self._clear_undo_stack()
-        self._replay_log = []
-        self.canvas.reset_styled()
-        self._save_action.setEnabled(False)
-        self.canvas.set_original(self._pil_to_pixmap(self._current_photo))
-        for i, step in enumerate(replay.steps):
-            style_id = self._resolve_style_id_by_name(step.style)
-            assert style_id is not None  # guaranteed by pre-flight
-            # Load model if needed
-            self._current_style_name = step.style
-            if not self.engine.is_loaded(style_id):
-                project_root: Path = _get_project_root()
-                if style_id in self.registry:
-                    style_obj = self.registry.get(style_id)
-                    try:
-                        self.engine.load_model(
-                            style_id,
-                            style_obj.model_path_resolved(project_root),
-                            tensor_layout=style_obj.tensor_layout,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        QMessageBox.critical(self, "Apply Style Chain",
-                            f"Could not load model for \u2018{step.style}\u2019: {exc}")
-                        return
-            if i == 0:
-                self._apply_style(style_id, step.strength / 100.0)
-            else:
-                self._reapply_style(style_id, step.strength / 100.0)
-        self._status.showMessage(f"Style chain applied: {Path(path_str).name}")
-
-    def _show_link_dialog(self, title: str, html: str) -> None:
-        """Show an informational dialog that supports clickable hyperlinks."""
-        dlg = QDialog(self)
-        dlg.setWindowTitle(title)
-        dlg.setMinimumWidth(520)
-
-        label = QLabel(html)
-        label.setWordWrap(True)
-        label.setOpenExternalLinks(True)
-        label.setTextFormat(Qt.RichText)  # type: ignore[attr-defined]
-        label.setContentsMargins(4, 4, 4, 4)
-
-        scroll = QScrollArea()
-        scroll.setWidget(label)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-
-        ok_btn = QPushButton("OK")
-        ok_btn.setFixedWidth(80)
-        ok_btn.clicked.connect(dlg.accept)
-
-        layout = QVBoxLayout(dlg)
-        layout.addWidget(scroll)
-        layout.addWidget(ok_btn, alignment=Qt.AlignmentFlag.AlignRight)
-
-        dlg.exec()
-
     def _show_how_to_use(self) -> None:
-        self._show_link_dialog(
-            "How to Use",
-            "<b>Basic workflow</b><br>"
-            "<ol>"
-            "<li><b>Open a photo</b> &mdash; click <b>\U0001f4c2</b> or use <i>File &rarr; Open Photo</i> "
-            "(Ctrl+O).</li>"
-            "<li><b>Select a style</b> &mdash; click a thumbnail in the Styles panel on the left. "
-            "The style is pre-loaded so the first apply is fast.</li>"
-            "<li><b>Apply</b> <b>\u25b6</b> &mdash; runs the neural style transfer on your photo. "
-            "The result appears on the right side of the split view. Drag the divider to compare "
-            "before and after.</li>"
-            "<li><b>Save</b> <b>\U0001f4be</b> &mdash; saves the styled result to disk.</li>"
-            "</ol>"
-            "<br>"
-            "<b>Strength slider (0 \u2013 300%)</b><br>"
-            "Controls how strongly the style is blended into your photo.<br>"
-            "&nbsp;&nbsp;\u2022 <b>0%</b> = original photo, no style applied.<br>"
-            "&nbsp;&nbsp;\u2022 <b>100%</b> = full style as produced by the model (natural reference point).<br>"
-            "&nbsp;&nbsp;\u2022 <b>&gt;100%</b> = style is extrapolated beyond the model output &mdash; "
-            "colours and textures become more intense.<br>"
-            "Release the slider to re-run the current step with the new value. "
-            "Only the right-pane result is updated; the left pane stays unchanged for comparison.<br><br>"
-            "<b>Re-Apply \u23e9 &mdash; chaining styles</b><br>"
-            "After a first Apply you can select a <i>different</i> style and click Re-Apply. "
-            "This uses the current styled result as the new input, painting a second style "
-            "on top of the first. You can chain as many styles as you like.<br>"
-            "The left pane automatically switches to show the previous result so you can "
-            "compare each step.<br><br>"
-            "<b>Undo \u21a9</b><br>"
-            "Steps back through the last three Apply / Re-Apply operations. "
-            "Strength slider adjustments are <i>not</i> counted as separate undo steps.<br><br>"
-            "<b>Reset \u21ba</b><br>"
-            "Reloads the original photo and discards all style filters, returning the canvas "
-            "to its initial state.<br><br>"
-            "<b>Style Chains</b><br>"
-            "Copy the current style chain to the clipboard via <i>File &rarr; Style Chain to Clipboard</i>. "
-            "The YAML can be saved as a <code>.yml</code> file and later re-applied via "
-            "<i>File &rarr; Apply Style Chain\u2026</i>, or processed in batch via "
-            "<code>BatchStyler.exe --apply-style-chain</code>.",
-        )
+        show_how_to_use(self)
 
     def _show_about_nst(self) -> None:
-        self._show_link_dialog(
-            "About Neural Style Transfer",
-            "<b>How Neural Style Transfer works</b><br><br>"
-            "Neural Style Transfer (NST) applies the visual texture of a <i>style image</i> "
-            "(e.g. a painting) to your <i>content photo</i> while preserving its "
-            "structure and shapes.<br><br>"
-            "<b>Feed-forward network (Johnson et al., 2016)</b><br>"
-            "Unlike the original iterative optimisation, this app uses a lightweight "
-            "convolutional network trained specifically for each style. Once trained, "
-            "a single forward pass transforms any photo in milliseconds — "
-            "no per-image optimisation required.<br><br>"
-            "<b>Tiled inference</b><br>"
-            "To handle large photos without running out of GPU memory, the image is "
-            "divided into overlapping tiles, each processed independently, "
-            "then blended back together seamlessly.<br><br>"
-            "<b>Strength slider</b><br>"
-            "Blends the styled result with the original photo "
-            "(0&nbsp;% = original, 100&nbsp;% = fully styled). "
-            "Tile size and overlap can be tuned in <i>File &#8594; Settings</i>.<br><br>"
-            "<b>References</b><br>"
-            "&#8226; Gatys et al. (2015) &mdash; "
-            "<a href='https://arxiv.org/pdf/1508.06576'>A Neural Algorithm of Artistic Style</a> "
-            "&mdash; the original NST paper using iterative optimisation.<br>"
-            "&#8226; Johnson et al. (2016) &mdash; "
-            "<a href='https://arxiv.org/pdf/1603.08155'>Perceptual Losses for Real-Time Style Transfer and Super-Resolution</a> "
-            "&mdash; the feed-forward network used in this app.<br>"
-            "&#8226; Ulyanov et al. (2017) &mdash; "
-            "<a href='https://arxiv.org/abs/1607.08022'>Instance Normalization: The Missing Ingredient for Fast Stylization</a> "
-            "&mdash; Instance Normalization used in the feed-forward network in place of Batch Normalization.<br>"
-            "&#8226; Kaggle notebook &mdash; "
-            "<a href='https://www.kaggle.com/code/yashchoudhary/fast-neural-style-transfer'>Fast Neural Style Transfer</a> "
-            "by Yash Choudhary.",
-        )
+        show_about_nst(self)
 
     def _show_credits(self) -> None:
-        self._show_link_dialog(
-            "Credits",
-            "<b>Peter's Picture Stylist</b><br><br>"
-            "Pretrained ONNX models courtesy of:<br>"
-            "&nbsp;&nbsp;<em>yakhyo/fast-neural-style-transfer</em> (MIT) &mdash; Fast Neural Style Transfer<br>"
-            "&nbsp;&nbsp;<em>igreat/fast-style-transfer</em> (MIT) &mdash; Fast Neural Style Transfer<br><br>"
-            "Additional pretrained models:<br>"
-            "&nbsp;&nbsp;<b>CycleGAN</b> (BSD) &mdash; unpaired image-to-image translation; "
-            "Monet, Van Gogh, C\u00e9zanne and Ukiyo-e styles.<br>"
-            "&nbsp;&nbsp;Original paper: <em>Zhu et al., 2017</em> &mdash; "
-            "<a href='https://junyanz.github.io/CycleGAN/'>junyanz.github.io/CycleGAN</a><br><br>"
-            "&nbsp;&nbsp;<b>AnimeGAN v2</b> (MIT) &mdash; photo-to-anime conversion.<br>"
-            "&nbsp;&nbsp;Original repo: "
-            "<a href='https://github.com/TachibanaYoshino/AnimeGANv2'>github.com/TachibanaYoshino/AnimeGANv2</a><br><br>"
-            "Training infrastructure:<br>"
-            "&nbsp;&nbsp;<b>Kaggle</b> &mdash; free GPU compute (T4 x1) "
-            "used to train new styles.<br><br>"
-            "Built with Python, PySide6, and ONNX Runtime.",
-        )
+        show_credits(self)
 
     def _open_settings_dialog(self) -> None:
         dlg = SettingsDialog(settings=self._settings, parent=self)
