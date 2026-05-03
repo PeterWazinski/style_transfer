@@ -317,7 +317,7 @@ class KaggleStyleRunner:
         )
 
         cmd = [
-            sys.executable, str(self._repo_dir / "main_style_trainer.py"), "train",
+            sys.executable, str(self._repo_dir / "bin" / "main_style_trainer.py"), "train",
             "--style",          *[str(p) for p in self.cfg.style_images],
             "--coco",           str(self.cfg.coco_path),
             "--out",            str(out_dir),

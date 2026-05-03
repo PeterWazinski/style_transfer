@@ -16,6 +16,11 @@ dependencies = [
     "numpy>=1.26.0",
 ]
 
+[project.scripts]
+stylist       = "src.stylist.app:main"
+batch-styler  = "src.batch_styler.app:main"
+trainer       = "src.trainer.app:main"
+
 [project.optional-dependencies]
 trainer = [
     "torch>=2.3.0",
