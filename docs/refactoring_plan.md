@@ -13,7 +13,7 @@ Items marked ~~crossed out~~ have been found to be non-issues on closer inspecti
 
 | # | Severity | Category | File(s) | Approx. saving | Status |
 |---|----------|----------|---------|----------------|--------|
-| 1 | **critical** | God class | `src/stylist/main_window.py` | −350 lines | open |
+| 1 | **critical** | God class | `src/stylist/main_window.py` | −350 lines | done |
 | 2 | **serious** | Duplicate logic + missing logging | `src/core/engine.py` | −8 lines / 3 sites | open |
 | 3 | **serious** | Duplicate logic | `main_window.py` | −8 lines / 2 sites | open |
 | 4 | **serious** | ~~Breaks encapsulation~~ | ~~`batch_styler.py`~~ | — | ✅ DONE |
