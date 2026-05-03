@@ -21,7 +21,6 @@ import logging
 import sys
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -48,7 +47,7 @@ from src.core.engine import StyleTransferEngine
 from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.registry import StyleRegistry
-from src.core.style_chain_schema import load_style_chain
+from src.core.style_chain_schema import load_style_chain, dump_style_chain, ReplayLog, ReplayStep
 from src.core.settings import AppSettings
 from src.stylist.apply_worker import ApplyWorker, is_gpu_crash as _is_gpu_crash
 from src.stylist.photo_canvas import PhotoCanvasView
@@ -596,18 +595,13 @@ class MainWindow(QMainWindow):
 
     def _format_style_chain(self) -> str:
         """Serialise the current style chain to a YAML string."""
-        import yaml  # lazy — only needed when user requests clipboard / autosave
-        header = (
-            f"# PetersPictureStyler \u2013 style chain\n"
-            f"# Created: {datetime.now():%Y-%m-%d %H:%M}\n"
+        chain = ReplayLog(
+            tile_size=self._settings.tile_size,
+            tile_overlap=self._settings.overlap,
+            steps=[ReplayStep(style=s["style"], strength=s["strength"])  # type: ignore[arg-type]
+                   for s in self._replay_log],
         )
-        data = {
-            "version": 1,
-            "tile_size": self._settings.tile_size,
-            "tile_overlap": self._settings.overlap,
-            "steps": list(self._replay_log),
-        }
-        return header + yaml.dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        return dump_style_chain(chain)
 
     def _copy_style_chain_to_clipboard(self) -> None:
         if not self._replay_log:

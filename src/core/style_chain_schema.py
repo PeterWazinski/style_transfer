@@ -89,3 +89,35 @@ def load_style_chain(path: Path) -> ReplayLog:
             for e in exc.errors()
         )
         raise ValueError(f"Invalid replay log '{path.name}': {messages}") from exc
+
+
+def dump_style_chain(
+    log: ReplayLog,
+    *,
+    created_by: str = "PetersPictureStyler",
+) -> str:
+    """Serialise a :class:`ReplayLog` to a YAML string.
+
+    The output starts with a two-line human-readable header comment so the
+    file is self-describing when opened in a text editor.
+
+    Args:
+        log:        The validated style-chain model to serialise.
+        created_by: Application name written into the header comment.
+
+    Returns:
+        UTF-8 YAML string, ready to be written to a ``.yml`` file.
+    """
+    from datetime import datetime  # noqa: PLC0415 — lazy, only when serialising
+
+    header = (
+        f"# {created_by} \u2013 style chain\n"
+        f"# Created: {datetime.now():%Y-%m-%d %H:%M}\n"
+    )
+    data: dict[str, object] = {"version": log.version}
+    if log.tile_size is not None:
+        data["tile_size"] = log.tile_size
+    if log.tile_overlap is not None:
+        data["tile_overlap"] = log.tile_overlap
+    data["steps"] = [{"style": s.style, "strength": s.strength} for s in log.steps]
+    return header + yaml.dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False)
