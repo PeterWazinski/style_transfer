@@ -104,10 +104,6 @@ class MainWindow(QMainWindow):
         self.registry = registry
         self.engine = engine
         self.photo_manager = photo_manager
-        # Keep private aliases for internal use.
-        self._registry = registry
-        self._engine = engine
-        self._photo_manager = photo_manager
         self._settings: AppSettings = settings or AppSettings.load()
         self._current_photo: Optional[PILImage] = None
         self._current_photo_path: Optional[Path] = None
@@ -136,7 +132,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.canvas)
 
         # Left dock: style gallery
-        self.gallery = StyleGalleryView(self._registry, self)
+        self.gallery = StyleGalleryView(self.registry, self)
         dock = QDockWidget("Styles", self)
         dock.setWidget(self.gallery)
         dock.setFeatures(
@@ -234,12 +230,12 @@ class MainWindow(QMainWindow):
         self._current_style_name = style.name
         self._status.showMessage(f"Style selected: {style.name}")
         # Preload ONNX if not already loaded
-        if not self._engine.is_loaded(style.id):
+        if not self.engine.is_loaded(style.id):
             # model_path is stored as a str relative to the project root
             project_root: Path = _get_project_root()
             model_path: Path = style.model_path_resolved(project_root)
             try:
-                self._engine.load_model(
+                self.engine.load_model(
                     style.id, model_path, tensor_layout=style.tensor_layout
                 )
             except Exception as exc:  # noqa: BLE001
@@ -266,11 +262,11 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:  # type: ignore[attr-defined]
             return
         try:
-            image = self._photo_manager.load(self._current_photo_path, max_megapixels=self._settings.max_megapixels)
+            image = self.photo_manager.load(self._current_photo_path, max_megapixels=self._settings.max_megapixels)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Load Error", str(exc))
             return
-        self._engine.unload_all_models()  # free DirectML/GPU memory for clean state
+        self.engine.unload_all_models()  # free DirectML/GPU memory for clean state
         self._current_photo = image
         self._styled_photo = None
         self._styled_photo_input = None
@@ -295,7 +291,7 @@ class MainWindow(QMainWindow):
             return
         path = Path(path_str)
         try:
-            image = self._photo_manager.load(path, max_megapixels=self._settings.max_megapixels)
+            image = self.photo_manager.load(path, max_megapixels=self._settings.max_megapixels)
         except UnsupportedFormatError as exc:
             QMessageBox.warning(self, "Unsupported Format", str(exc))
             return
@@ -360,7 +356,7 @@ class MainWindow(QMainWindow):
         :class:`QMessageBox` before returning.
         """
         worker = ApplyWorker(
-            engine=self._engine,
+            engine=self.engine,
             source=source,
             style_id=style_id,
             strength=strength,
@@ -576,7 +572,7 @@ class MainWindow(QMainWindow):
             return
         path = Path(path_str)
         try:
-            self._photo_manager.save(self._styled_photo, path)
+            self.photo_manager.save(self._styled_photo, path)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Save Error", str(exc))
             return
@@ -623,7 +619,7 @@ class MainWindow(QMainWindow):
     def _resolve_style_id_by_name(self, style_name: str) -> str | None:
         """Return the style id for the given display name (case-insensitive), or None."""
         needle = style_name.casefold()
-        for style in self._registry.list_styles():
+        for style in self.registry.list_styles():
             if style.name.casefold() == needle:
                 return style.id
         return None
@@ -680,12 +676,12 @@ class MainWindow(QMainWindow):
             assert style_id is not None  # guaranteed by pre-flight
             # Load model if needed
             self._current_style_name = step.style
-            if not self._engine.is_loaded(style_id):
+            if not self.engine.is_loaded(style_id):
                 project_root: Path = _get_project_root()
-                if style_id in self._registry:
-                    style_obj = self._registry.get(style_id)
+                if style_id in self.registry:
+                    style_obj = self.registry.get(style_id)
                     try:
-                        self._engine.load_model(
+                        self.engine.load_model(
                             style_id,
                             style_obj.model_path_resolved(project_root),
                             tensor_layout=style_obj.tensor_layout,

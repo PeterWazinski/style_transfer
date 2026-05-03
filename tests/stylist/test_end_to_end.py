@@ -161,7 +161,7 @@ class TestEndToEndJourney:
         e2e_window._apply_style("e2e-style", 1.0)
 
         save_path = tmp_path / "output.jpg"
-        spy = mocker.spy(e2e_window._photo_manager, "save")
+        spy = mocker.spy(e2e_window.photo_manager, "save")
 
         with patch(
             "src.stylist.main_window.QFileDialog.getSaveFileName",
@@ -261,17 +261,17 @@ class TestReApplyJourney:
         styled_before_reapply = e2e_window._styled_photo
 
         captured_inputs: list[Image.Image] = []
-        original_apply = e2e_window._engine.apply
+        original_apply = e2e_window.engine.apply
 
         def _spy_apply(photo: Image.Image, *args, **kwargs) -> Image.Image:
             captured_inputs.append(photo)
             return original_apply(photo, *args, **kwargs)
 
-        e2e_window._engine.apply = _spy_apply  # type: ignore[assignment]
+        e2e_window.engine.apply = _spy_apply  # type: ignore[assignment]
         try:
             e2e_window._reapply_style("e2e-style", 1.0)
         finally:
-            e2e_window._engine.apply = original_apply  # type: ignore[assignment]
+            e2e_window.engine.apply = original_apply  # type: ignore[assignment]
 
         assert len(captured_inputs) == 1
         assert np.array_equal(
