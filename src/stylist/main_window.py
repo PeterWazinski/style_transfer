@@ -792,6 +792,9 @@ class MainWindow(QMainWindow):
             "&#8226; Johnson et al. (2016) &mdash; "
             "<a href='https://arxiv.org/pdf/1603.08155'>Perceptual Losses for Real-Time Style Transfer and Super-Resolution</a> "
             "&mdash; the feed-forward network used in this app.<br>"
+            "&#8226; Ulyanov et al. (2017) &mdash; "
+            "<a href='https://arxiv.org/abs/1607.08022'>Instance Normalization: The Missing Ingredient for Fast Stylization</a> "
+            "&mdash; Instance Normalization used in the feed-forward network in place of Batch Normalization.<br>"
             "&#8226; Kaggle notebook &mdash; "
             "<a href='https://www.kaggle.com/code/yashchoudhary/fast-neural-style-transfer'>Fast Neural Style Transfer</a> "
             "by Yash Choudhary.",
