@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from pathlib import Path
 
 from PIL import Image
@@ -54,6 +55,7 @@ def cmd_style_overview(
     engine = StyleTransferEngine()
 
     styles_sorted = sorted(styles, key=lambda s: s.name.casefold())
+    total = len(styles_sorted)
 
     cells: list[tuple[str, Image.Image | None]] = [
         ("Original", source.copy()),
@@ -62,14 +64,15 @@ def cmd_style_overview(
     ]
     n_applied: int = 0
 
-    for style in styles_sorted:
+    for idx, style in enumerate(styles_sorted, 1):
         model_path: Path = style.model_path_resolved(_catalog.REPO_ROOT)
 
         if not model_path.exists():
-            print(f"  Skipping '{style.name}' — model not found: {model_path}")
+            print(f"({idx}/{total}) Skipping '{style.name}' — model not found: {model_path}")
             continue
 
-        print(f"Processing style '{style.name}' ...", flush=True)
+        print(f"({idx}/{total}) Processing style '{style.name}' ...", end="", flush=True)
+        t0 = time.monotonic()
         try:
             engine.load_model(style.id, model_path, tensor_layout=style.tensor_layout)
             styled_full = engine.apply(
@@ -81,10 +84,13 @@ def cmd_style_overview(
                 use_float16=use_float16,
             )
         except Exception as exc:  # noqa: BLE001
-            print(f"  Error applying '{style.name}': {exc}")
+            print(f"\n  Error applying '{style.name}': {exc}")
             continue
         finally:
             engine.unload_model(style.id)
+
+        elapsed = round(time.monotonic() - t0)
+        print(f"\r({idx}/{total}) Processing style '{style.name}' in {elapsed} seconds.")
 
         for s in PDF_STRENGTHS:
             label = f"{style.name} ({int(s * 100)}%)"
@@ -112,10 +118,7 @@ def cmd_style_overview(
         resolution=DPI,
     )
 
-    print(
-        f"\nOK  PDF written: {pdf_path}"
-        f"  ({len(pages)} page(s), {n_applied} style(s) × {len(PDF_STRENGTHS)} strengths + original)"
-    )
+    print(f"PDF written: {pdf_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -241,18 +244,20 @@ def cmd_style_chain_overview(
     engine = StyleTransferEngine()
 
     cells: list[tuple[str, Image.Image]] = [("Original", source.copy())]
+    total_chains = len(chain_files)
 
-    for chain_file in chain_files:
+    for idx, chain_file in enumerate(chain_files, 1):
         try:
             chain = load_style_chain(chain_file)
         except ValueError as exc:
-            print(f"  Warning: skipping '{chain_file.name}' — invalid schema: {exc}")
+            print(f"({idx}/{total_chains}) Skipping '{chain_file.name}' — invalid schema: {exc}")
             continue
         unknown = [step.style for step in chain.steps if registry.find_by_name(step.style) is None]
         if unknown:
-            print(f"  Warning: skipping '{chain_file.name}' — unknown style(s): {', '.join(unknown)}")
+            print(f"({idx}/{total_chains}) Skipping '{chain_file.name}' — unknown style(s): {', '.join(unknown)}")
             continue
-        print(f"Applying chain '{chain_file.stem}' ...", flush=True)
+        print(f"({idx}/{total_chains}) Applying chain '{chain_file.stem}' ...", end="", flush=True)
+        t0 = time.monotonic()
         try:
             result = _apply_chain_to_image(
                 source, chain, registry, engine,
@@ -262,8 +267,10 @@ def cmd_style_chain_overview(
                 strength_scale=strength_scale,
             )
         except Exception as exc:  # noqa: BLE001
-            print(f"  Warning: skipping '{chain_file.name}' — error during apply: {exc}")
+            print(f"\n  Warning: skipping '{chain_file.name}' — error during apply: {exc}")
             continue
+        elapsed = round(time.monotonic() - t0)
+        print(f"\r({idx}/{total_chains}) Applying chain '{chain_file.stem}' in {elapsed} seconds.")
         cells.append((chain_file.stem, result))
 
     if len(cells) <= 1:
@@ -283,4 +290,4 @@ def cmd_style_chain_overview(
         append_images=pages[1:],
         resolution=DPI,
     )
-    print(f"\nOK  PDF written: {pdf_path}  ({len(pages)} page(s), {len(cells) - 1} chain(s))")
+    print(f"PDF written: {pdf_path}")

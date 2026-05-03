@@ -192,3 +192,12 @@ coll = COLLECT(
     ],
     name="PetersPictureStyler",     # → dist\PetersPictureStyler\
 )
+
+# ── Remove intermediate EXE stubs that PyInstaller leaves at dist\ root ──
+import os, pathlib
+_dist = pathlib.Path(DISTPATH)
+for _stub in ("PetersPictureStyler.exe", "BatchStyler.exe"):
+    _p = _dist / _stub
+    if _p.exists():
+        _p.unlink()
+        print(f"INFO: Removed intermediate stub {_p}")
