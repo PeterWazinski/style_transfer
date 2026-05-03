@@ -159,7 +159,7 @@ def test_recommend_verdicts_are_known_strings(synthetic_style_image: pathlib.Pat
 
 def test_runner_analyse_style_calls_module(synthetic_style_image: pathlib.Path) -> None:
     """KaggleStyleRunner.analyse_style() should delegate to src.trainer.style_analyser."""
-    from scripts.kaggle_training_helper import KaggleStyleRunner, TrainingConfig
+    from training.kaggle_training_helper import KaggleStyleRunner, TrainingConfig
 
     cfg = TrainingConfig(
         style_images=[synthetic_style_image],
@@ -169,7 +169,7 @@ def test_runner_analyse_style_calls_module(synthetic_style_image: pathlib.Path) 
     )
     runner = KaggleStyleRunner(cfg)
 
-    with patch("scripts.kaggle_training_helper.analyse_style", wraps=analyse_style) as mock_fn:
+    with patch("training.kaggle_training_helper.analyse_style", wraps=analyse_style) as mock_fn:
         result = runner.analyse_style()
 
     mock_fn.assert_called_once_with(synthetic_style_image)
@@ -185,7 +185,7 @@ def test_runner_analyse_style_calls_module(synthetic_style_image: pathlib.Path) 
 def test_training_config_save_load_roundtrip(
     synthetic_style_image: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
-    from scripts.kaggle_training_helper import TrainingConfig
+    from training.kaggle_training_helper import TrainingConfig
 
     cfg = TrainingConfig(
         style_images=[synthetic_style_image],
