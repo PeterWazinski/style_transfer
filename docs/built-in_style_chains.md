@@ -310,6 +310,36 @@ Each phase ends with a full test run and a commit.
 
 ---
 
+### Phase 5b — Seed built-in chains (manual testing baseline)
+
+Migrate three chains from `sample_images/style-chains/` as the first built-in chains.
+Run via `add_style_chain.ipynb` (or directly via helper) to generate previews and populate the catalog.
+
+| Source file | Target id | Name | Steps |
+|---|---|---|---|
+| `Pastel.yml` | `pastel` | Pastel | Ukiyo-e 150 → Akira Manga 80 → Cubism 80 |
+| `dense.yml` | `dense` | Dense | Abstract 68 → Cubism 187 |
+| `hundertwasser.yml` | `hundertwasser` | Hundertwasser | HundertwasserWorks 100 |
+
+**Files produced:**
+```
+style_chains/
+    catalog.json                ← 3 entries
+    pastel/
+        chain.yml
+        preview.jpg
+    dense/
+        chain.yml
+        preview.jpg
+    hundertwasser/
+        chain.yml
+        preview.jpg
+```
+
+**Commit:** `feat: seed built-in style chains (pastel, dense, hundertwasser)`
+
+---
+
 ### Phase 6 — Build integration
 
 **Files changed:**
