@@ -2,6 +2,10 @@
 
 Each gallery item is rendered as a square thumbnail card with the style
 name centred below the image.
+
+An item can be flagged as *invalid* by setting ``Qt.UserRole + 1`` to
+``True`` on the ``QStandardItem``.  Invalid items receive a translucent
+grey overlay with a ⚠ warning badge.
 """
 from __future__ import annotations
 
@@ -14,6 +18,9 @@ ITEM_WIDTH: int = 130
 ITEM_HEIGHT: int = 148
 PADDING: int = 6
 FONT_SIZE: int = 9
+
+# UserRole used to flag an item as invalid (broken chain / missing style)
+INVALID_ROLE: int = Qt.UserRole + 1  # type: ignore[attr-defined]
 
 
 class ThumbnailDelegate(QStyledItemDelegate):
@@ -67,6 +74,21 @@ class ThumbnailDelegate(QStyledItemDelegate):
                 text_rect,
                 Qt.AlignHCenter | Qt.AlignTop | Qt.TextWordWrap,  # type: ignore[attr-defined]
                 name,
+            )
+
+        # Invalid overlay — translucent grey wash + ⚠ badge
+        if index.data(INVALID_ROLE):
+            overlay_rect = QRect(rect.x(), rect.y(), ITEM_WIDTH, THUMB_SIZE + PADDING)
+            painter.fillRect(overlay_rect, QColor(0, 0, 0, 130))
+            painter.setPen(QColor("#FFC107"))
+            badge_font = QFont()
+            badge_font.setPointSize(20)
+            badge_font.setBold(True)
+            painter.setFont(badge_font)
+            painter.drawText(
+                overlay_rect,
+                Qt.AlignCenter,  # type: ignore[attr-defined]
+                "\u26a0",
             )
 
         painter.restore()

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication
 from src.core.engine import StyleTransferEngine
 from src.core.photo_manager import PhotoManager
 from src.core.registry import StyleRegistry
+from src.core.chain_registry import BuiltinChainRegistry
 from src.core.settings import AppSettings, DEFAULT_TILE_SIZE, DEFAULT_OVERLAP
 from src.stylist.main_window import MainWindow
 
@@ -53,6 +54,7 @@ def _log_path() -> Path:
 
 _STYLES_ROOT: Path = _project_root() / "styles"
 _CATALOG_PATH: Path = _STYLES_ROOT / "catalog.json"
+_CHAIN_CATALOG_PATH: Path = _project_root() / "style_chains" / "catalog.json"
 _LOG_PATH: Path = _log_path()
 
 
@@ -131,6 +133,15 @@ def main() -> int:
     registry = StyleRegistry(catalog_path=_CATALOG_PATH)
     engine = StyleTransferEngine(execution_provider=settings.execution_provider)
     photo_manager = PhotoManager()
+
+    # Validate built-in chains against the style catalog; log any broken chains.
+    chain_registry = BuiltinChainRegistry(catalog_path=_CHAIN_CATALOG_PATH)
+    root = _project_root()
+    invalid_chains = chain_registry.validate_styles(registry, root=root)
+    for cid, missing in invalid_chains.items():
+        logger.warning(
+            "Built-in chain '%s' references missing styles: %s", cid, missing
+        )
 
     window = MainWindow(
         registry=registry,
