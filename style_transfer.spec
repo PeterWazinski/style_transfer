@@ -32,8 +32,10 @@ a = Analysis(
     binaries=ort_binaries,
     datas=[
         # ── onnxruntime provider config / XML schemas ────────────────────
-        # styles\ and sample_images\ are NOT bundled — compile.ps1 copies
-        # styles\ into the output directory after the build.
+        # styles\ and style_chains\ are NOT bundled here — compile.ps1 copies
+        # them into the output directory after the build so users can add new
+        # styles / chains by dropping a folder + updating catalog.json
+        # without recompiling.
         *ort_datas,
     ],
     hiddenimports=[

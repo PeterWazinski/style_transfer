@@ -88,6 +88,22 @@ Copy-Item -Recurse $SrcStyles $DstStyles
 $StyleCount = (Get-ChildItem $DstStyles -Directory).Count
 Write-Host "  Copied $StyleCount style folder(s) to $DstStyles"
 
+# ── 5b. Copy style_chains\ into the output directory ─────────────────────
+Write-Host "`n=== Copying style_chains\ into output directory ===" -ForegroundColor Cyan
+$SrcChains = "$Root\style_chains"
+$DstChains = "$OutputDir\style_chains"
+if (Test-Path $DstChains) { Remove-Item -Recurse -Force $DstChains }
+if (Test-Path $SrcChains) {
+    Copy-Item -Recurse $SrcChains $DstChains
+    $ChainCount = (Get-ChildItem $DstChains -Directory).Count
+    Write-Host "  Copied $ChainCount chain folder(s) to $DstChains"
+} else {
+    # Create an empty placeholder so the app finds the directory on first run
+    New-Item -ItemType Directory -Force $DstChains | Out-Null
+    '{"chains":[]}' | Set-Content -Encoding UTF8 "$DstChains\catalog.json"
+    Write-Host "  style_chains\ not found — created empty placeholder at $DstChains"
+}
+
 # ── 6. Report result ─────────────────────────────────────────────────────
 if (Test-Path $OutputExe) {
     $ExeMB   = [math]::Round((Get-Item $OutputExe).Length / 1MB, 1)
