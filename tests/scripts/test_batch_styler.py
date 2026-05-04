@@ -936,6 +936,32 @@ class TestStyleChainOverview:
         assert expected.stat().st_size > 1000
         assert expected.read_bytes()[:4] == b"%PDF"
 
+    def test_chain_overview_pdf_is_a4_landscape(self, tmp_path: Path) -> None:
+        """PDF pages must be A4-landscape (same layout as --style-overview)."""
+        photo, chain_dir = self._setup(tmp_path, n_chains=2)
+        mock_engine = MagicMock()
+        mock_engine.apply.return_value = _solid((80, 80, 80), size=64)
+        captured_pages: list[Image.Image] = []
+        original_make_page = bs._make_page
+
+        def _capture_page(cells, font):
+            page = original_make_page(cells, font)
+            captured_pages.append(page)
+            return page
+
+        with (
+            patch("src.batch_styler.commands.StyleTransferEngine", return_value=mock_engine),
+            patch("src.batch_styler.catalog.REPO_ROOT", tmp_path),
+            patch("src.batch_styler.commands._make_page", side_effect=_capture_page),
+        ):
+            bs_commands.cmd_style_chain_overview(photo, chain_dir, tile_size=256, overlap=64, use_float16=False)
+
+        assert len(captured_pages) >= 1, "_make_page was never called"
+        for page in captured_pages:
+            assert page.size == (bs.A4_W, bs.A4_H), (
+                f"Expected A4-landscape ({bs.A4_W}×{bs.A4_H}), got {page.size}"
+            )
+
     def test_chain_overview_outdir(self, tmp_path: Path) -> None:
         """When out_dir is given the PDF is written there, not next to the image."""
         photo, chain_dir = self._setup(tmp_path, n_chains=1)

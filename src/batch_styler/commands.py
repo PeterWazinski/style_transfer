@@ -15,7 +15,6 @@ from PIL import Image
 
 import src.batch_styler.catalog as _catalog
 from src.batch_styler.pdf_layout import (
-    CHAIN_ROWS,
     CELLS_PER_PAGE,
     DPI,
     LABEL_H,
@@ -23,7 +22,6 @@ from src.batch_styler.pdf_layout import (
     _blend_to_strength,
     _fit_into,
     _load_font,
-    _make_chain_page,
     _make_page,
     build_cell_list,
 )
@@ -278,8 +276,8 @@ def cmd_style_chain_overview(
 
     font = _load_font(int(LABEL_H * 0.60))
     pages: list[Image.Image] = []
-    for i in range(0, len(cells), CHAIN_ROWS):
-        pages.append(_make_chain_page(cells[i : i + CHAIN_ROWS], font))
+    for i in range(0, len(cells), CELLS_PER_PAGE):
+        pages.append(_make_page(cells[i : i + CELLS_PER_PAGE], font))
 
     dir_out = out_dir if out_dir is not None else image_path.parent
     pdf_path = dir_out / f"{image_path.stem}_{chain_dir.name}_overview.pdf"
