@@ -1,3 +1,31 @@
 {
-  "chains": []
+  "chains": [
+    {
+      "id": "dense",
+      "name": "Dense",
+      "description": "Abstract base with heavy Cubism overlay.",
+      "chain_path": "style_chains/dense/chain.yml",
+      "preview_path": "style_chains/dense/preview.jpg",
+      "step_count": 2,
+      "tags": ["abstract", "geometric"]
+    },
+    {
+      "id": "hundertwasser",
+      "name": "Hundertwasser",
+      "description": "Single-step Hundertwasser Works style.",
+      "chain_path": "style_chains/hundertwasser/chain.yml",
+      "preview_path": "style_chains/hundertwasser/preview.jpg",
+      "step_count": 1,
+      "tags": ["colorful", "organic"]
+    },
+    {
+      "id": "pastel",
+      "name": "Pastel",
+      "description": "Ukiyo-e base softened with Akira Manga and Cubism.",
+      "chain_path": "style_chains/pastel/chain.yml",
+      "preview_path": "style_chains/pastel/preview.jpg",
+      "step_count": 3,
+      "tags": ["soft", "painterly"]
+    }
+  ]
 }

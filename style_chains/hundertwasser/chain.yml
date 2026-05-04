@@ -1,0 +1,7 @@
+# PetersPictureStyler – style chain
+version: 1
+tile_size: 1024
+tile_overlap: 128
+steps:
+- style: HundertwasserWorks
+  strength: 100
