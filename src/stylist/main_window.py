@@ -193,6 +193,7 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         # Gallery → canvas
         self.gallery.style_selected.connect(self._on_style_selected)
         self.gallery.style_apply_requested.connect(self._on_style_apply_requested)
+        self.gallery.style_reapply_requested.connect(self._on_style_reapply_requested)
         # Canvas → actions
         self.canvas.open_photo_requested.connect(self._open_photo)
         self.canvas.reset_requested.connect(self._reset_photo)
@@ -228,6 +229,12 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self._on_style_selected(style)
         if self._current_photo is not None:
             self._apply_style(style.id, self.canvas.strength_slider.strength())
+
+    def _on_style_reapply_requested(self, style: StyleModel) -> None:
+        """Right-click Re-Apply on gallery thumbnail: select the style then re-apply on top."""
+        self._on_style_selected(style)
+        if self._styled_photo is not None:
+            self._reapply_style(style.id, self.canvas.strength_slider.strength())
 
     def _reset_photo(self) -> None:
         """Confirm, then reload the original photo as if it were just opened."""

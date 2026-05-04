@@ -11,11 +11,12 @@ import logging
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QModelIndex, Qt, Signal
+from PySide6.QtCore import QModelIndex, QPoint, Qt, Signal
 from PySide6.QtGui import QPixmap, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QListView,
+    QMenu,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -65,8 +66,9 @@ class StyleGalleryView(QWidget):
         delete_requested(str):            "Delete" button or right-click → Delete.
     """
 
-    style_selected: Signal = Signal(object)        # payload: StyleModel
-    style_apply_requested: Signal = Signal(object) # payload: StyleModel
+    style_selected: Signal = Signal(object)          # payload: StyleModel
+    style_apply_requested: Signal = Signal(object)   # payload: StyleModel
+    style_reapply_requested: Signal = Signal(object) # payload: StyleModel
 
     def __init__(
         self,
@@ -103,6 +105,7 @@ class StyleGalleryView(QWidget):
         # --- Connections ---
         self._list_view.clicked.connect(self._on_item_clicked)
         self._list_view.doubleClicked.connect(self._on_item_double_clicked)
+        self._list_view.customContextMenuRequested.connect(self._on_context_menu_requested)
 
     # ------------------------------------------------------------------
     # Public API
@@ -118,6 +121,8 @@ class StyleGalleryView(QWidget):
             item.setData(style, Qt.UserRole)  # type: ignore[attr-defined]
             item.setTextAlignment(Qt.AlignHCenter)  # type: ignore[attr-defined]
             item.setEditable(False)
+            if style.description:
+                item.setToolTip(style.description)
             self._item_model.appendRow(item)
         logger.debug("Gallery refreshed: %d styles", self._item_model.rowCount())
 
@@ -153,3 +158,19 @@ class StyleGalleryView(QWidget):
         style: StyleModel | None = index.data(Qt.UserRole)  # type: ignore[attr-defined]
         if style:
             self.style_apply_requested.emit(style)
+
+    def _on_context_menu_requested(self, pos: QPoint) -> None:
+        index = self._list_view.indexAt(pos)
+        if not index.isValid():
+            return
+        style: StyleModel | None = index.data(Qt.UserRole)  # type: ignore[attr-defined]
+        if not style:
+            return
+        menu = QMenu(self)
+        apply_action = menu.addAction("Apply")
+        reapply_action = menu.addAction("Re-Apply")
+        action = menu.exec(self._list_view.viewport().mapToGlobal(pos))
+        if action is apply_action:
+            self.style_apply_requested.emit(style)
+        elif action is reapply_action:
+            self.style_reapply_requested.emit(style)

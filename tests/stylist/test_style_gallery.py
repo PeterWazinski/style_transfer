@@ -63,3 +63,90 @@ class TestRefresh:
         before = _item_count(gallery)
         gallery.refresh()
         assert _item_count(gallery) == before + 1
+
+# ---------------------------------------------------------------------------
+# Tooltip
+# ---------------------------------------------------------------------------
+
+class TestTooltip:
+    def test_tooltip_set_when_description_present(
+        self, qtbot, registry: StyleRegistry, tmp_path
+    ) -> None:
+        """Items whose style has a non-empty description get a tooltip."""
+        # The fixture's user_style already has description="A test style"
+        gallery = StyleGalleryView(registry=registry)
+        qtbot.addWidget(gallery)
+        item = gallery.model().item(0)
+        assert item is not None
+        assert item.toolTip() == "A test style"
+
+    def test_no_tooltip_when_description_empty(
+        self, qtbot, empty_registry: StyleRegistry, tmp_path
+    ) -> None:
+        """Items with empty description should have no tooltip."""
+        from src.core.models import StyleModel
+        style = StyleModel(
+            id="no-desc", name="No Desc",
+            model_path=str(tmp_path / "model.onnx"),
+            description="",
+        )
+        empty_registry.add(style)
+        gallery = StyleGalleryView(registry=empty_registry)
+        qtbot.addWidget(gallery)
+        item = gallery.model().item(0)
+        assert item is not None
+        assert item.toolTip() == ""
+
+
+# ---------------------------------------------------------------------------
+# Right-click context menu signals
+# ---------------------------------------------------------------------------
+
+class TestContextMenu:
+    def test_context_menu_apply_emits_style_apply_requested(
+        self, qtbot, gallery: StyleGalleryView
+    ) -> None:
+        received: list = []
+        gallery.style_apply_requested.connect(received.append)
+        first_index = gallery.model().index(0, 0)
+        style = first_index.data(Qt.UserRole)
+
+        # Simulate the context-menu handler directly (avoids Qt mouse event machinery)
+        gallery._on_context_menu_requested.__func__  # ensure it exists  # noqa: B018
+        # Build a QPoint that maps to the first item
+        rect = gallery._list_view.visualRect(first_index)
+        pos = rect.center()
+        # Patch menu.exec to return apply_action without showing UI
+        import unittest.mock as mock
+        with mock.patch("src.stylist.style_gallery.QMenu") as MockMenu:
+            instance = MockMenu.return_value
+            apply_action = object()
+            reapply_action = object()
+            instance.addAction.side_effect = [apply_action, reapply_action]
+            instance.exec.return_value = apply_action
+            gallery._on_context_menu_requested(pos)
+
+        assert len(received) == 1
+        assert received[0].id == style.id
+
+    def test_context_menu_reapply_emits_style_reapply_requested(
+        self, qtbot, gallery: StyleGalleryView
+    ) -> None:
+        received: list = []
+        gallery.style_reapply_requested.connect(received.append)
+        first_index = gallery.model().index(0, 0)
+        style = first_index.data(Qt.UserRole)
+
+        rect = gallery._list_view.visualRect(first_index)
+        pos = rect.center()
+        import unittest.mock as mock
+        with mock.patch("src.stylist.style_gallery.QMenu") as MockMenu:
+            instance = MockMenu.return_value
+            apply_action = object()
+            reapply_action = object()
+            instance.addAction.side_effect = [apply_action, reapply_action]
+            instance.exec.return_value = reapply_action
+            gallery._on_context_menu_requested(pos)
+
+        assert len(received) == 1
+        assert received[0].id == style.id
