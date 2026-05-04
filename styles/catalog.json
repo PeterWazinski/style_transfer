@@ -171,6 +171,16 @@
       "preview_path": "styles/cubism/preview.jpg",
       "is_builtin": false,
       "tensor_layout": "nchw"
+    },
+    {
+      "id": "kusama",
+      "name": "Kusama",
+      "description": "Yayoi Kusama",
+      "author": "PeterWazinski",
+      "model_path": "styles/kusama/model.onnx",
+      "preview_path": "styles/kusama/preview.jpg",
+      "is_builtin": false,
+      "tensor_layout": "nchw"
     }
   ]
 }
