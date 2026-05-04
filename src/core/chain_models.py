@@ -1,7 +1,7 @@
-"""Data models for style catalog entries.
+"""Data models for built-in style-chain catalog entries.
 
-`StyleModel` is the single source of truth for one style.
-`StyleStore` serialises/deserialises the catalog to/from JSON.
+`BuiltinChainModel` is the single source of truth for one built-in style chain.
+`ChainStore` serialises/deserialises the chain catalog to/from JSON.
 """
 from __future__ import annotations
 
@@ -12,33 +12,28 @@ from typing import Any
 
 
 # ---------------------------------------------------------------------------
-# StyleModel
+# BuiltinChainModel
 # ---------------------------------------------------------------------------
 
 @dataclass
-class StyleModel:
-    """Metadata for one style (built-in or user-created)."""
+class BuiltinChainModel:
+    """Metadata for one built-in style chain."""
 
-    id: str                                         # unique slug, e.g. "candy"
-    name: str                                       # display name, e.g. "Candy"
-    model_path: str                                 # relative path to .onnx file
-    preview_path: str = ""                          # relative path to thumbnail (optional)
+    id: str                                      # unique slug, e.g. "pastel"
+    name: str                                    # display name, e.g. "Pastel"
+    chain_path: str                              # relative path to .yml file
+    preview_path: str = ""                       # relative path to thumbnail (optional)
     description: str = ""
-    author: str = ""
-    is_builtin: bool = True
-    # Tensor layout expected by the ONNX model:
-    #   "nchw"       – standard NST TransformerNet: [1,3,H,W], values [0,255]
-    #   "nhwc_tanh"  – AnimeGANv3-style TF models: [1,H,W,3], values [-1,1]
-    tensor_layout: str = "nchw"
-    tags: list[str] = field(default_factory=list)   # reserved for future filtering
+    step_count: int = 0                          # denormalised; set by add_style_chain notebook
+    tags: list[str] = field(default_factory=list)  # reserved for future filtering
 
     # ------------------------------------------------------------------
     # Convenience properties
     # ------------------------------------------------------------------
 
-    def model_path_resolved(self, root: Path) -> Path:
-        """Return absolute model path relative to *root*."""
-        return root / self.model_path
+    def chain_path_resolved(self, root: Path) -> Path:
+        """Return absolute chain YAML path relative to *root*."""
+        return root / self.chain_path
 
     def preview_path_resolved(self, root: Path) -> Path:
         """Return absolute preview path relative to *root*."""
@@ -49,11 +44,10 @@ class StyleModel:
     # ------------------------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = asdict(self)
-        return d
+        return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "StyleModel":
+    def from_dict(cls, data: dict[str, Any]) -> "BuiltinChainModel":
         # Allow extra keys from future versions; keep only known fields.
         known = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
         filtered = {k: v for k, v in data.items() if k in known}
@@ -61,34 +55,31 @@ class StyleModel:
 
 
 # ---------------------------------------------------------------------------
-# StyleStore  — JSON persistence
+# ChainStore  — JSON persistence (read-only at runtime)
 # ---------------------------------------------------------------------------
 
-class StyleStore:
-    """Loads and saves the style catalog JSON file.
+class ChainStore:
+    """Loads and saves the built-in chain catalog JSON file.
 
     The catalog is a JSON object of the form::
 
         {
-            "styles": [
-                {"id": "candy", "name": "Candy", ...},
+            "chains": [
+                {"id": "pastel", "name": "Pastel", ...},
                 ...
             ]
         }
 
     The store never assumes that the file exists up-front; calling
-    :meth:`save` creates missing parent directories automatically.
+    :meth:`load` on a missing file returns an empty list.
+    :meth:`save` is provided for use by the developer notebook only.
     """
 
     def __init__(self, catalog_path: Path) -> None:
         self.catalog_path: Path = catalog_path
 
-    # ------------------------------------------------------------------
-    # I/O
-    # ------------------------------------------------------------------
-
-    def load(self) -> list[StyleModel]:
-        """Load all styles from the catalog file.
+    def load(self) -> list[BuiltinChainModel]:
+        """Load all chains from the catalog file.
 
         Returns an empty list if the file does not exist.
         """
@@ -96,13 +87,13 @@ class StyleStore:
             return []
         with self.catalog_path.open("r", encoding="utf-8") as f:
             raw: dict[str, Any] = json.load(f)
-        return [StyleModel.from_dict(entry) for entry in raw.get("styles", [])]
+        return [BuiltinChainModel.from_dict(entry) for entry in raw.get("chains", [])]
 
-    def save(self, styles: list[StyleModel]) -> None:
-        """Persist *styles* to the catalog file, overwriting any previous content."""
+    def save(self, chains: list[BuiltinChainModel]) -> None:
+        """Persist *chains* to the catalog file, overwriting any previous content."""
         self.catalog_path.parent.mkdir(parents=True, exist_ok=True)
         payload: dict[str, Any] = {
-            "styles": [s.to_dict() for s in styles]
+            "chains": [c.to_dict() for c in chains]
         }
         with self.catalog_path.open("w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)

@@ -45,6 +45,18 @@ def test_stylemodel_from_dict_ignores_unknown_keys() -> None:
     StyleModel.from_dict(d)
 
 
+def test_stylemodel_tags_roundtrip() -> None:
+    s = StyleModel(id="candy", name="Candy", model_path="styles/candy/model.onnx", tags=["warm", "soft"])
+    d = s.to_dict()
+    s2 = StyleModel.from_dict(d)
+    assert s2.tags == ["warm", "soft"]
+
+
+def test_stylemodel_tags_default_empty() -> None:
+    s = _make_style("candy")
+    assert s.tags == []
+
+
 def test_stylemodel_resolved_paths(tmp_path: Path) -> None:
     s = _make_style("candy")
     assert s.model_path_resolved(tmp_path) == tmp_path / "styles/candy/model.onnx"
