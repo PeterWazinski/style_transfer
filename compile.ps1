@@ -101,7 +101,7 @@ if (Test-Path $SrcChains) {
     # Create an empty placeholder so the app finds the directory on first run
     New-Item -ItemType Directory -Force $DstChains | Out-Null
     '{"chains":[]}' | Set-Content -Encoding UTF8 "$DstChains\catalog.json"
-    Write-Host "  style_chains\ not found — created empty placeholder at $DstChains"
+    Write-Host "  style_chains\ not found -- created empty placeholder at $DstChains"
 }
 
 # ── 6. Report result ─────────────────────────────────────────────────────
