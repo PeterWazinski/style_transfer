@@ -80,11 +80,24 @@ def show_how_to_use(parent: QWidget) -> None:
         "<b>Reset \u21ba</b><br>"
         "Reloads the original photo and discards all style filters, returning the canvas "
         "to its initial state.<br><br>"
-        "<b>Style Chains</b><br>"
-        "Copy the current style chain to the clipboard via <i>File &rarr; Style Chain to Clipboard</i>. "
+        "<b>Built-in Style Chains (Chains tab)</b><br>"
+        "The <b>Chains</b> tab next to the Styles tab shows curated multi-step chains "
+        "that ship with the app. Each chain applies several styles in sequence automatically.<br>"
+        "&nbsp;&nbsp;\u2022 <b>Double-click</b> (or right-click &rarr; <i>Apply</i>) to apply the "
+        "chain fresh from your original photo.<br>"
+        "&nbsp;&nbsp;\u2022 Right-click &rarr; <i>Append</i> to run the chain on top of your current styled result.<br>"
+        "Chains whose referenced styles are missing are shown greyed-out with a \u26a0 badge "
+        "and cannot be applied.<br><br>"
+        "<b>Style Chains (custom / manual)</b><br>"
+        "You can also build your own chain step-by-step using Apply / Re-Apply. "
+        "Copy the current chain to the clipboard via <i>File &rarr; Style Chain to Clipboard</i>. "
         "The YAML can be saved as a <code>.yml</code> file and later re-applied via "
         "<i>File &rarr; Apply Style Chain\u2026</i>, or processed in batch via "
-        "<code>BatchStyler.exe --apply-style-chain</code>.",
+        "<code>BatchStyler.exe --apply-style-chain</code>.<br><br>"
+        "<b>Styles &amp; Chains panel</b><br>"
+        "The left panel is a floating dock. You can <b>undock</b> it by double-clicking its "
+        "title bar or dragging it away from the window edge, then <b>re-dock</b> it by "
+        "dragging it back to either side of the main window.",
     )
 
 
