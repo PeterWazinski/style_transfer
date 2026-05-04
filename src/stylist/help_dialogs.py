@@ -144,5 +144,7 @@ def show_credits(parent: QWidget) -> None:
         "Training infrastructure:<br>"
         "&nbsp;&nbsp;<b>Kaggle</b> &mdash; free GPU compute (T4 x1) "
         "used to train new styles.<br><br>"
-        "Built with Python, PySide6, and ONNX Runtime.",
+        "Built with Python, PySide6, and ONNX Runtime.<br><br>"
+        "Special thanks:<br>"
+        "&nbsp;&nbsp;<b>Claude Sonnet 4.6</b> (Anthropic) &mdash; coding assistance and advice.",
     )
