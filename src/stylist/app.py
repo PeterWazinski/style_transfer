@@ -148,6 +148,8 @@ def main() -> int:
         engine=engine,
         photo_manager=photo_manager,
         settings=settings,
+        chain_registry=chain_registry,
+        invalid_chain_ids=set(invalid_chains.keys()),
     )
     window.show()
 

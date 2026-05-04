@@ -32,15 +32,20 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QStatusBar,
+    QTabWidget,
     QWidget,
 )
 
+from src.core.chain_models import BuiltinChainModel
+from src.core.chain_registry import BuiltinChainRegistry
 from src.core.engine import StyleTransferEngine
 from src.core.models import StyleModel
 from src.core.photo_manager import PhotoManager, UnsupportedFormatError
 from src.core.registry import StyleRegistry
 from src.core.settings import AppSettings
 from src.stylist.apply_controller import ApplyController
+from src.stylist.chain_gallery import ChainGalleryView
+from src.stylist.chain_gallery_controller import ChainGalleryController
 from src.stylist.help_dialogs import show_how_to_use, show_about_nst, show_credits
 from src.stylist.photo_canvas import PhotoCanvasView
 from src.stylist.settings_dialog import SettingsDialog
@@ -61,7 +66,7 @@ class _UndoSnapshot:
     has_styled: bool
 
 
-class MainWindow(ApplyController, StyleChainController, QMainWindow):
+class MainWindow(ApplyController, StyleChainController, ChainGalleryController, QMainWindow):
     """Top-level application window.
 
     Args:
@@ -78,6 +83,8 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         engine: StyleTransferEngine,
         photo_manager: PhotoManager,
         settings: Optional[AppSettings] = None,
+        chain_registry: Optional[BuiltinChainRegistry] = None,
+        invalid_chain_ids: Optional[set[str]] = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -86,6 +93,10 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self.engine = engine
         self.photo_manager = photo_manager
         self._settings: AppSettings = settings or AppSettings.load()
+        self._chain_registry: BuiltinChainRegistry = chain_registry or BuiltinChainRegistry(
+            catalog_path=_get_project_root() / "style_chains" / "catalog.json"
+        )
+        self._invalid_chain_ids: set[str] = invalid_chain_ids or set()
         self._current_photo: Optional[PILImage] = None
         self._current_photo_path: Optional[Path] = None
         self._styled_photo: Optional[PILImage] = None
@@ -112,10 +123,18 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self.canvas = PhotoCanvasView(self)
         self.setCentralWidget(self.canvas)
 
-        # Left dock: style gallery
+        # Left dock: Styles tab + Chains tab
         self.gallery = StyleGalleryView(self.registry, self)
-        dock = QDockWidget("Styles", self)
-        dock.setWidget(self.gallery)
+        self.chain_gallery = ChainGalleryView(
+            self._chain_registry,
+            invalid_chain_ids=self._invalid_chain_ids,
+            parent=self,
+        )
+        tabs = QTabWidget(self)
+        tabs.addTab(self.gallery, "Styles")
+        tabs.addTab(self.chain_gallery, "Chains")
+        dock = QDockWidget("Styles & Chains", self)
+        dock.setWidget(tabs)
         dock.setFeatures(
             QDockWidget.DockWidgetFeature.DockWidgetMovable
             | QDockWidget.DockWidgetFeature.DockWidgetFloatable
@@ -194,6 +213,9 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self.gallery.style_selected.connect(self._on_style_selected)
         self.gallery.style_apply_requested.connect(self._on_style_apply_requested)
         self.gallery.style_reapply_requested.connect(self._on_style_reapply_requested)
+        # Chain gallery → controller
+        self.chain_gallery.chain_apply_requested.connect(self._apply_builtin_chain)
+        self.chain_gallery.chain_append_requested.connect(self._append_builtin_chain)
         # Canvas → actions
         self.canvas.open_photo_requested.connect(self._open_photo)
         self.canvas.reset_requested.connect(self._reset_photo)
