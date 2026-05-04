@@ -1,9 +1,8 @@
 """StyleChainController mixin — style-chain operations for MainWindow.
 
 Provides ``_resolve_style_id_by_name``, ``_format_style_chain``,
-``_copy_style_chain_to_clipboard``, and ``_apply_style_chain``.
-Mixed into :class:`src.stylist.main_window.MainWindow`.
-"""
+``_copy_style_chain_to_clipboard``, and ``_append_style_chain``.
+Mixed into :class:`src.stylist.main_window.MainWindow`."""
 from __future__ import annotations
 
 import logging
@@ -49,50 +48,33 @@ class StyleChainController:
         QApplication.clipboard().setText(self._format_style_chain())
         self._status.showMessage("Style chain copied to clipboard.")
 
-    def _apply_style_chain(self: "MainWindow") -> None:  # type: ignore[misc]
+    def _append_style_chain(self: "MainWindow") -> None:  # type: ignore[misc]
         if self._current_photo is None:
-            QMessageBox.information(self, "Apply Style Chain", "Open a photo first.")  # type: ignore[call-arg]
+            QMessageBox.information(self, "Append Style Chain", "Open a photo first.")  # type: ignore[call-arg]
             return
         start_dir = self._settings.last_save_dir or self._settings.default_output_dir or ""
         path_str, _ = QFileDialog.getOpenFileName(
-            self, "Apply Style Chain", start_dir, "YAML style chain (*.yml *.yaml)"  # type: ignore[call-arg]
+            self, "Append Style Chain", start_dir, "YAML style chain (*.yml *.yaml)"  # type: ignore[call-arg]
         )
         if not path_str:
             return
         try:
-            replay = load_style_chain(Path(path_str))
+            chain = load_style_chain(Path(path_str))
         except ValueError as exc:
-            QMessageBox.critical(self, "Apply Style Chain", str(exc))  # type: ignore[call-arg]
+            QMessageBox.critical(self, "Append Style Chain", str(exc))  # type: ignore[call-arg]
             return
         unknown: list[str] = [
-            step.style for step in replay.steps
+            step.style for step in chain.steps
             if self._resolve_style_id_by_name(step.style) is None
         ]
         if unknown:
             names = "\n".join(f"  \u2022 {n}" for n in unknown)
             QMessageBox.critical(
-                self, "Apply Style Chain",  # type: ignore[call-arg]
+                self, "Append Style Chain",  # type: ignore[call-arg]
                 "The following styles were not found in the catalog:\n" + names + "\n\nChain aborted.",
             )
             return
-        if replay.tile_size is not None:
-            try:
-                self._settings.tile_size = replay.tile_size
-            except (ValueError, AttributeError):
-                pass
-        if replay.tile_overlap is not None:
-            try:
-                self._settings.overlap = replay.tile_overlap
-            except (ValueError, AttributeError):
-                pass
-        self._styled_photo = None
-        self._styled_photo_input = None
-        self._clear_undo_stack()
-        self._replay_log = []
-        self.canvas.reset_styled()
-        self._save_action.setEnabled(False)
-        self.canvas.set_original(self._pil_to_pixmap(self._current_photo))
-        for i, step in enumerate(replay.steps):
+        for step in chain.steps:
             style_id = self._resolve_style_id_by_name(step.style)
             assert style_id is not None
             self._current_style_name = step.style
@@ -108,12 +90,12 @@ class StyleChainController:
                         )
                     except Exception as exc:  # noqa: BLE001
                         QMessageBox.critical(  # type: ignore[call-arg]
-                            self, "Apply Style Chain",
+                            self, "Append Style Chain",
                             f"Could not load model for \u2018{step.style}\u2019: {exc}",
                         )
                         return
-            if i == 0:
+            if self._styled_photo is None:
                 self._apply_style(style_id, step.strength / 100.0)
             else:
                 self._reapply_style(style_id, step.strength / 100.0)
-        self._status.showMessage(f"Style chain applied: {Path(path_str).name}")
+        self._status.showMessage(f"Style chain appended: {Path(path_str).name}")

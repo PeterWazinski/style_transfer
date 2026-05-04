@@ -12,9 +12,10 @@ Covers:
 - _copy_style_chain_to_clipboard when empty shows dialog
 - Auto-save .yml written next to saved image when enabled
 - Auto-save .yml skipped when autosave_replay_log=False
-- _apply_style_chain applies a valid chain
-- _apply_style_chain shows error on invalid schema
-- _apply_style_chain pre-flight: unknown style shows error, no apply called
+- _append_style_chain: appends to existing log without reset
+- _append_style_chain: shows error on invalid schema
+- _append_style_chain pre-flight: unknown style shows error, no apply called
+- _append_style_chain: tile settings in YAML are ignored
 """
 from __future__ import annotations
 
@@ -236,11 +237,39 @@ class TestStyleChain:
         yml_path = out_jpg.with_suffix(".yml")
         assert not yml_path.exists()
 
-    def test_apply_style_chain_applies_chain(self, qtbot, tmp_path: Path) -> None:
+    def test_append_chain_no_prior_style_starts_new_log(self, qtbot, tmp_path: Path) -> None:
+        """With photo open but no style applied, appending a 2-step chain produces log of length 2."""
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
 
-        # Write a valid chain file
+        chain = tmp_path / "chain.yml"
+        chain.write_text(textwrap.dedent("""\
+            version: 1
+            steps:
+              - style: Test Style
+                strength: 80
+              - style: Test Style
+                strength: 60
+        """), encoding="utf-8")
+
+        engine.apply = MagicMock(return_value=_dummy_image())
+
+        with (
+            patch("src.stylist.main_window.QFileDialog.getOpenFileName",
+                  return_value=(str(chain), "")),
+            patch("src.stylist.main_window.QMessageBox.critical"),
+        ):
+            window._append_style_chain()
+
+        assert len(window._replay_log) == 2
+        assert window._styled_photo is not None
+
+    def test_append_style_chain_appends_to_existing_log(self, qtbot, tmp_path: Path) -> None:
+        """Prior manual step is preserved; chain step is appended on top."""
+        window, engine = _make_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        _do_apply(window, engine)  # log = [t1]
+
         chain = tmp_path / "chain.yml"
         chain.write_text(textwrap.dedent("""\
             version: 1
@@ -249,21 +278,75 @@ class TestStyleChain:
                 strength: 100
         """), encoding="utf-8")
 
-        result = _dummy_image()
-        engine.apply = MagicMock(return_value=result)
+        engine.apply = MagicMock(return_value=_dummy_image())
 
         with (
             patch("src.stylist.main_window.QFileDialog.getOpenFileName",
                   return_value=(str(chain), "")),
             patch("src.stylist.main_window.QMessageBox.critical"),
-            patch("src.stylist.main_window.QMessageBox.warning"),
         ):
-            window._apply_style_chain()
+            window._append_style_chain()
 
-        assert engine.apply.call_count == 1
-        assert window._styled_photo is not None
+        assert len(window._replay_log) == 2
 
-    def test_apply_chain_preflight_unknown_style_shows_error(self, qtbot, tmp_path: Path) -> None:
+    def test_append_chain_preserves_prior_replay_log(self, qtbot, tmp_path: Path) -> None:
+        """Apply t1 manually, append [t2, t3] → log == [t1, t2, t3]."""
+        window, engine = _make_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        _do_apply(window, engine)  # [t1]
+
+        chain = tmp_path / "chain.yml"
+        chain.write_text(textwrap.dedent("""\
+            version: 1
+            steps:
+              - style: Test Style
+                strength: 90
+              - style: Test Style
+                strength: 70
+        """), encoding="utf-8")
+
+        engine.apply = MagicMock(return_value=_dummy_image())
+
+        with (
+            patch("src.stylist.main_window.QFileDialog.getOpenFileName",
+                  return_value=(str(chain), "")),
+            patch("src.stylist.main_window.QMessageBox.critical"),
+        ):
+            window._append_style_chain()
+
+        assert len(window._replay_log) == 3
+        assert window._replay_log[0]["style"] == "Test Style"
+        assert window._replay_log[0]["strength"] == 100  # original manual step
+
+    def test_undo_after_append_removes_only_last_chain_step(self, qtbot, tmp_path: Path) -> None:
+        """After appending one step, undo removes just that step, leaving prior log intact."""
+        window, engine = _make_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+        _do_apply(window, engine)  # log = [t1]
+
+        chain = tmp_path / "chain.yml"
+        chain.write_text(textwrap.dedent("""\
+            version: 1
+            steps:
+              - style: Test Style
+                strength: 50
+        """), encoding="utf-8")
+
+        engine.apply = MagicMock(return_value=_dummy_image())
+
+        with (
+            patch("src.stylist.main_window.QFileDialog.getOpenFileName",
+                  return_value=(str(chain), "")),
+            patch("src.stylist.main_window.QMessageBox.critical"),
+        ):
+            window._append_style_chain()  # log = [t1, t2]
+
+        assert len(window._replay_log) == 2
+        window._perform_undo()
+        assert len(window._replay_log) == 1
+        assert window._replay_log[0]["strength"] == 100  # t1 still there
+
+    def test_append_chain_preflight_unknown_style_shows_error(self, qtbot, tmp_path: Path) -> None:
         """Pre-flight: unknown style → QMessageBox.critical shown, no apply called."""
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
@@ -278,14 +361,33 @@ class TestStyleChain:
                   return_value=(str(chain), "")),
             patch("src.stylist.main_window.QMessageBox.critical") as mock_critical,
         ):
-            window._apply_style_chain()
+            window._append_style_chain()
         mock_critical.assert_called_once()
         engine.apply.assert_not_called()
 
-    def test_load_replay_applies_tile_settings(self, qtbot, tmp_path: Path) -> None:
-        """tile_size and tile_overlap in the YAML must be applied to settings."""
+    def test_append_chain_invalid_schema_shows_error(self, qtbot, tmp_path: Path) -> None:
+        window, _ = _make_window(qtbot, tmp_path)
+        _load_photo(window, tmp_path)
+
+        bad_chain = tmp_path / "bad.yml"
+        bad_chain.write_text("version: 99\nsteps:\n  - style: X\n    strength: 100\n",
+                              encoding="utf-8")
+
+        with (
+            patch("src.stylist.main_window.QFileDialog.getOpenFileName",
+                  return_value=(str(bad_chain), "")),
+            patch("src.stylist.main_window.QMessageBox.critical") as mock_crit,
+        ):
+            window._append_style_chain()
+
+        mock_crit.assert_called_once()
+
+    def test_append_chain_tile_settings_in_yaml_are_ignored(self, qtbot, tmp_path: Path) -> None:
+        """tile_size and tile_overlap in the YAML must NOT be applied to settings."""
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
+        original_tile_size = window._settings.tile_size
+        original_overlap = window._settings.overlap
 
         chain = tmp_path / "chain.yml"
         chain.write_text(textwrap.dedent("""\
@@ -303,26 +405,8 @@ class TestStyleChain:
             patch("src.stylist.main_window.QFileDialog.getOpenFileName",
                   return_value=(str(chain), "")),
             patch("src.stylist.main_window.QMessageBox.critical"),
-            patch("src.stylist.main_window.QMessageBox.warning"),
         ):
-            window._apply_style_chain()
+            window._append_style_chain()
 
-        assert window._settings.tile_size == 512
-        assert window._settings.overlap == 64
-
-    def test_load_replay_log_invalid_schema_shows_error(self, qtbot, tmp_path: Path) -> None:
-        window, _ = _make_window(qtbot, tmp_path)
-        _load_photo(window, tmp_path)
-
-        bad_chain = tmp_path / "bad.yml"
-        bad_chain.write_text("version: 99\nsteps:\n  - style: X\n    strength: 100\n",
-                              encoding="utf-8")
-
-        with (
-            patch("src.stylist.main_window.QFileDialog.getOpenFileName",
-                  return_value=(str(bad_chain), "")),
-            patch("src.stylist.main_window.QMessageBox.critical") as mock_crit,
-        ):
-            window._apply_style_chain()
-
-        mock_crit.assert_called_once()
+        assert window._settings.tile_size == original_tile_size
+        assert window._settings.overlap == original_overlap

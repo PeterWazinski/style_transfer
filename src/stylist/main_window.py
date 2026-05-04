@@ -153,10 +153,10 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self._chain_copy_action.triggered.connect(self._copy_style_chain_to_clipboard)
         file_menu.addAction(self._chain_copy_action)
 
-        self._chain_apply_action = QAction("Apply Style Chain\u2026", self)
-        self._chain_apply_action.setStatusTip("Load a .yml style chain and apply it to the current photo")
-        self._chain_apply_action.triggered.connect(self._apply_style_chain)
-        file_menu.addAction(self._chain_apply_action)
+        self._chain_append_action = QAction("Append Style Chain…", self)
+        self._chain_append_action.setStatusTip("Load a .yml style chain and append it on top of the current photo state")
+        self._chain_append_action.triggered.connect(self._append_style_chain)
+        file_menu.addAction(self._chain_append_action)
 
         file_menu.addSeparator()
         settings_action = QAction("Settings\u2026", self)
