@@ -127,7 +127,7 @@ def cmd_style_overview(
 
 def _apply_chain_to_image(
     source: Image.Image,
-    chain,  # ReplayLog
+    chain,  # StyleChain
     registry: StyleRegistry,
     engine: StyleTransferEngine,
     tile_size: int,

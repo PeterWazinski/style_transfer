@@ -1,4 +1,4 @@
-"""Tests for Phase 2 — style chain integration in MainWindow.
+﻿"""Tests for Phase 2 — style chain integration in MainWindow.
 
 Covers:
 - Initial state: empty log
@@ -11,7 +11,7 @@ Covers:
 - _format_style_chain serialises to valid YAML
 - _copy_style_chain_to_clipboard when empty shows dialog
 - Auto-save .yml written next to saved image when enabled
-- Auto-save .yml skipped when autosave_replay_log=False
+- Auto-save .yml skipped when autosave_style_log=False
 - _append_style_chain: appends to existing log without reset
 - _append_style_chain: shows error on invalid schema
 - _append_style_chain pre-flight: unknown style shows error, no apply called
@@ -70,7 +70,7 @@ def _make_window(qtbot, tmp_path: Path, autosave: bool = True) -> tuple[MainWind
         mock_ort.InferenceSession.return_value = make_mock_session()
         engine.load_model("test-style", Path("dummy/model.onnx"))
 
-    settings = AppSettings(autosave_replay_log=autosave)
+    settings = AppSettings(autosave_style_log=autosave)
     window = MainWindow(
         registry=registry,
         engine=engine,
@@ -115,33 +115,33 @@ def _do_reapply(window: MainWindow, engine: MagicMock, strength: float = 1.5) ->
 class TestStyleChain:
     def test_log_empty_initially(self, qtbot, tmp_path: Path) -> None:
         window, _ = _make_window(qtbot, tmp_path)
-        assert window._replay_log == []
+        assert window._style_log == []
 
     def test_apply_starts_new_chain(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
         _do_apply(window, engine)
-        assert len(window._replay_log) == 1
-        assert window._replay_log[0]["style"] == "Test Style"
-        assert window._replay_log[0]["strength"] == 100
+        assert len(window._style_log) == 1
+        assert window._style_log[0]["style"] == "Test Style"
+        assert window._style_log[0]["strength"] == 100
 
     def test_apply_resets_previous_chain(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
         _do_apply(window, engine)
         _do_reapply(window, engine)
-        assert len(window._replay_log) == 2
+        assert len(window._style_log) == 2
         # Applying again must start a fresh chain of length 1
         _do_apply(window, engine)
-        assert len(window._replay_log) == 1
+        assert len(window._style_log) == 1
 
     def test_reapply_appends_entry(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
         _do_apply(window, engine)
         _do_reapply(window, engine, strength=1.5)
-        assert len(window._replay_log) == 2
-        assert window._replay_log[1]["strength"] == 150
+        assert len(window._style_log) == 2
+        assert window._style_log[1]["strength"] == 150
 
     def test_strength_adjust_updates_last_entry(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
@@ -155,38 +155,38 @@ class TestStyleChain:
         window._styled_photo_input = _dummy_image()
         with patch("src.stylist.main_window.QMessageBox.critical"):
             window._reapply_style_strength("test-style", 0.75)
-        assert window._replay_log[-1]["strength"] == 75
+        assert window._style_log[-1]["strength"] == 75
 
     def test_undo_pops_entry(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
         _do_apply(window, engine)
         _do_reapply(window, engine)
-        assert len(window._replay_log) == 2
+        assert len(window._style_log) == 2
         window._perform_undo()
-        assert len(window._replay_log) == 1
+        assert len(window._style_log) == 1
 
     def test_open_photo_clears_log(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
         _do_apply(window, engine)
-        assert len(window._replay_log) == 1
+        assert len(window._style_log) == 1
         _load_photo(window, tmp_path)
-        assert window._replay_log == []
+        assert window._style_log == []
 
     def test_reset_clears_log(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
         _do_apply(window, engine)
-        assert len(window._replay_log) == 1
+        assert len(window._style_log) == 1
         with patch("src.stylist.main_window.QMessageBox.question",
                    return_value=MagicMock()):
             # Simulate confirmed reset by calling directly after patching question
             window._styled_photo = None
             window._styled_photo_input = None
-            window._replay_log = []
+            window._style_log = []
             window._clear_undo_stack()
-        assert window._replay_log == []
+        assert window._style_log == []
 
     def test_format_style_chain_yaml(self, qtbot, tmp_path: Path) -> None:
         window, engine = _make_window(qtbot, tmp_path)
@@ -261,7 +261,7 @@ class TestStyleChain:
         ):
             window._append_style_chain()
 
-        assert len(window._replay_log) == 2
+        assert len(window._style_log) == 2
         assert window._styled_photo is not None
 
     def test_append_style_chain_appends_to_existing_log(self, qtbot, tmp_path: Path) -> None:
@@ -287,9 +287,9 @@ class TestStyleChain:
         ):
             window._append_style_chain()
 
-        assert len(window._replay_log) == 2
+        assert len(window._style_log) == 2
 
-    def test_append_chain_preserves_prior_replay_log(self, qtbot, tmp_path: Path) -> None:
+    def test_append_chain_preserves_prior_style_log(self, qtbot, tmp_path: Path) -> None:
         """Apply t1 manually, append [t2, t3] → log == [t1, t2, t3]."""
         window, engine = _make_window(qtbot, tmp_path)
         _load_photo(window, tmp_path)
@@ -314,9 +314,9 @@ class TestStyleChain:
         ):
             window._append_style_chain()
 
-        assert len(window._replay_log) == 3
-        assert window._replay_log[0]["style"] == "Test Style"
-        assert window._replay_log[0]["strength"] == 100  # original manual step
+        assert len(window._style_log) == 3
+        assert window._style_log[0]["style"] == "Test Style"
+        assert window._style_log[0]["strength"] == 100  # original manual step
 
     def test_undo_after_append_removes_only_last_chain_step(self, qtbot, tmp_path: Path) -> None:
         """After appending one step, undo removes just that step, leaving prior log intact."""
@@ -341,10 +341,10 @@ class TestStyleChain:
         ):
             window._append_style_chain()  # log = [t1, t2]
 
-        assert len(window._replay_log) == 2
+        assert len(window._style_log) == 2
         window._perform_undo()
-        assert len(window._replay_log) == 1
-        assert window._replay_log[0]["strength"] == 100  # t1 still there
+        assert len(window._style_log) == 1
+        assert window._style_log[0]["strength"] == 100  # t1 still there
 
     def test_append_chain_preflight_unknown_style_shows_error(self, qtbot, tmp_path: Path) -> None:
         """Pre-flight: unknown style → QMessageBox.critical shown, no apply called."""

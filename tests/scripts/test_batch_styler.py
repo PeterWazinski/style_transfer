@@ -1,4 +1,4 @@
-"""Unit tests for src/batch_styler/ package.
+﻿"""Unit tests for src/batch_styler/ package.
 
 Tests cover:
 - Layout constants are consistent (cell dimensions fit on a page)
@@ -371,7 +371,7 @@ steps:
         chain.write_text(self._CHAIN_YAML, encoding="utf-8")
         return photo, chain, entries
 
-    def test_replay_applies_steps_in_order(self, tmp_path: Path) -> None:
+    def test_chain_applies_steps_in_order(self, tmp_path: Path) -> None:
         """engine.apply must be called once per step, in order."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
@@ -393,7 +393,7 @@ steps:
         second_call_style_id = mock_engine.apply.call_args_list[1][0][1]
         assert second_call_style_id == "mosaic"
 
-    def test_replay_output_filename(self, tmp_path: Path) -> None:
+    def test_chain_output_filename(self, tmp_path: Path) -> None:
         """Output file must be <photo-stem>_<chain-stem>.jpg."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
@@ -412,7 +412,7 @@ steps:
         assert expected.exists(), "Output JPEG was not created"
         assert expected.stat().st_size > 0
 
-    def test_replay_unknown_style_exits(self, tmp_path: Path) -> None:
+    def test_chain_unknown_style_exits(self, tmp_path: Path) -> None:
         """A step referencing an unknown style name must exit with an error."""
         photo = tmp_path / "photo.jpg"
         _solid((100, 100, 100), size=64).save(photo)
@@ -435,7 +435,7 @@ steps:
         ):
             bs_commands.cmd_apply_style_chain(photo, bad_chain, tile_size=256, overlap=64, use_float16=False)
 
-    def test_replay_strength_converted_to_float(self, tmp_path: Path) -> None:
+    def test_chain_strength_converted_to_float(self, tmp_path: Path) -> None:
         """Each step's integer % strength must be divided by 100 before engine.apply."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
@@ -453,7 +453,7 @@ steps:
         assert abs(first_strength - 1.0) < 1e-6
         assert abs(second_strength - 1.5) < 1e-6
 
-    def test_replay_strength_override_scales_all_steps(self, tmp_path: Path) -> None:
+    def test_chain_strength_override_scales_all_steps(self, tmp_path: Path) -> None:
         """--strength-scale 60 must scale each step's strength by 0.60."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
@@ -475,7 +475,7 @@ steps:
         assert abs(first_strength - 0.60) < 1e-6
         assert abs(second_strength - 0.90) < 1e-6
 
-    def test_replay_invalid_schema_exits(self, tmp_path: Path) -> None:
+    def test_chain_invalid_schema_exits(self, tmp_path: Path) -> None:
         """A YAML with invalid schema (e.g. strength out of range) must exit."""
         photo = tmp_path / "photo.jpg"
         _solid((100, 100, 100), size=64).save(photo)
@@ -541,7 +541,7 @@ steps:
             assert call[1]["tile_size"] == 512   # CLI override
             assert call[1]["overlap"] == 32      # from YAML
 
-    def test_replay_outdir_writes_to_custom_dir(self, tmp_path: Path) -> None:
+    def test_chain_outdir_writes_to_custom_dir(self, tmp_path: Path) -> None:
         """Output JPEG must be placed in --outdir when specified."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         out_dir = tmp_path / "results"
@@ -564,7 +564,7 @@ steps:
         # Must NOT be written next to the source image
         assert not (tmp_path / "photo_my_chain.jpg").exists()
 
-    def test_replay_strength_override_adds_suffix_to_filename(self, tmp_path: Path) -> None:
+    def test_chain_strength_override_adds_suffix_to_filename(self, tmp_path: Path) -> None:
         """When --strength-scale N is used the output filename must end with _<N>.jpg."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         mock_engine = MagicMock()
@@ -585,7 +585,7 @@ steps:
         # Without override the plain name must NOT exist
         assert not (tmp_path / "photo_my_chain.jpg").exists()
 
-    def test_replay_outdir_with_strength_suffix(self, tmp_path: Path) -> None:
+    def test_chain_outdir_with_strength_suffix(self, tmp_path: Path) -> None:
         """--outdir and --strength-scale together: file goes to dir with suffix."""
         photo, chain, _ = self._setup(tmp_path, n_styles=2)
         out_dir = tmp_path / "out"

@@ -1,4 +1,4 @@
-"""ApplyController mixin — style-apply operations for MainWindow.
+﻿"""ApplyController mixin — style-apply operations for MainWindow.
 
 Provides ``_create_progress_dialog``, ``_run_apply_worker``,
 ``_apply_style``, ``_reapply_style``, and ``_reapply_style_strength``.
@@ -144,7 +144,7 @@ class ApplyController:
             self._status.showMessage("Re-apply cancelled." if dlg.wasCanceled() else "Error during style transfer.")
             return
         self._push_undo_snapshot()
-        self._replay_log.append({"style": self._current_style_name, "strength": int(strength * 100)})
+        self._style_log.append({"style": self._current_style_name, "strength": int(strength * 100)})
         self.canvas.split_view.set_original_pixmap(self._pil_to_pixmap(source_photo))
         self._left_pane_pil = source_photo
         self._styled_photo_input = source_photo
@@ -179,8 +179,8 @@ class ApplyController:
             self._status.showMessage("Adjustment cancelled." if dlg.wasCanceled() else "Error during style transfer.")
             return
         self._styled_photo = result
-        if self._replay_log:
-            self._replay_log[-1]["strength"] = int(strength * 100)
+        if self._style_log:
+            self._style_log[-1]["strength"] = int(strength * 100)
         self.canvas.set_styled(self._pil_to_pixmap(result))
         self._save_action.setEnabled(True)
         self._status.showMessage("Strength adjusted.")
@@ -206,7 +206,7 @@ class ApplyController:
             self._status.showMessage("Apply cancelled." if dlg.wasCanceled() else "Error during style transfer.")
             return
         self._push_undo_snapshot()
-        self._replay_log = [{"style": self._current_style_name, "strength": int(strength * 100)}]
+        self._style_log = [{"style": self._current_style_name, "strength": int(strength * 100)}]
         self._styled_photo_input = self._current_photo
         self._styled_photo = result
         self.canvas.set_styled(self._pil_to_pixmap(result))

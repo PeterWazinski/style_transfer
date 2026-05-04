@@ -197,3 +197,17 @@ class TestAppSettingsValidation:
         p.write_text("not json {{{")
         s = AppSettings.load(p)
         assert s == AppSettings()
+
+    def test_settings_migration_old_autosave_key(self, tmp_path: Path) -> None:
+        """Old settings JSON with autosave_replay_log is silently migrated to autosave_style_log."""
+        p = tmp_path / "settings.json"
+        p.write_text('{"autosave_replay_log": false}', encoding="utf-8")
+        s = AppSettings.load(p)
+        assert s.autosave_style_log is False
+
+    def test_settings_migration_new_key_takes_precedence(self, tmp_path: Path) -> None:
+        """If both old and new keys are present, the new key wins."""
+        p = tmp_path / "settings.json"
+        p.write_text('{"autosave_replay_log": false, "autosave_style_log": true}', encoding="utf-8")
+        s = AppSettings.load(p)
+        assert s.autosave_style_log is True

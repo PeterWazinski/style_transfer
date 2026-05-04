@@ -145,14 +145,14 @@ class SettingsDialog(QDialog):
             "Reduces VRAM usage and speeds up rendering. Has no effect on CPU-only runtimes."
         ))
 
-        # --- Autosave replay log ---
-        self.autosave_replay_check = QCheckBox(
-            "Autosave replay log (.yml) when saving image", self
+        # --- Autosave style log ---
+        self.autosave_style_check = QCheckBox(
+            "Autosave style log (.yml) when saving image", self
         )
-        form.addRow("", self.autosave_replay_check)
+        form.addRow("", self.autosave_style_check)
         form.addRow("", self._hint(
             "Writes a YAML style-chain file next to every saved image so you can "
-            "replay the same sequence later with BatchStyler --replay."
+            "replay the same sequence later with BatchStyler --apply-style-chain."
         ))
 
         # --- Max megapixels ---
@@ -215,8 +215,8 @@ class SettingsDialog(QDialog):
         # Float16
         self.float16_check.setChecked(settings.use_float16)
 
-        # Autosave replay log
-        self.autosave_replay_check.setChecked(settings.autosave_replay_log)
+        # Autosave style log
+        self.autosave_style_check.setChecked(settings.autosave_style_log)
 
         # Max megapixels
         idx = self.max_mp_combo.findData(settings.max_megapixels)
@@ -236,7 +236,7 @@ class SettingsDialog(QDialog):
             execution_provider=self.provider_combo.currentData(),
             use_float16=self.float16_check.isChecked(),
             max_megapixels=self.max_mp_combo.currentData(),
-            autosave_replay_log=self.autosave_replay_check.isChecked(),
+            autosave_style_log=self.autosave_style_check.isChecked(),
         )
 
     # ------------------------------------------------------------------

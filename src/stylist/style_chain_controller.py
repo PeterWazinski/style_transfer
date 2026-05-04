@@ -1,4 +1,4 @@
-"""StyleChainController mixin — style-chain operations for MainWindow.
+﻿"""StyleChainController mixin — style-chain operations for MainWindow.
 
 Provides ``_resolve_style_id_by_name``, ``_format_style_chain``,
 ``_copy_style_chain_to_clipboard``, and ``_append_style_chain``.
@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
-from src.core.style_chain_schema import load_style_chain, dump_style_chain, ReplayLog, ReplayStep
+from src.core.style_chain_schema import load_style_chain, dump_style_chain, StyleChain, ChainStep
 from src.stylist._utils import _get_project_root
 
 if TYPE_CHECKING:
@@ -33,16 +33,16 @@ class StyleChainController:
 
     def _format_style_chain(self: "MainWindow") -> str:  # type: ignore[misc]
         """Serialise the current style chain to a YAML string."""
-        chain = ReplayLog(
+        chain = StyleChain(
             tile_size=self._settings.tile_size,
             tile_overlap=self._settings.overlap,
-            steps=[ReplayStep(style=s["style"], strength=s["strength"])  # type: ignore[arg-type]
-                   for s in self._replay_log],
+            steps=[ChainStep(style=s["style"], strength=s["strength"])  # type: ignore[arg-type]
+                   for s in self._style_log],
         )
         return dump_style_chain(chain)
 
     def _copy_style_chain_to_clipboard(self: "MainWindow") -> None:  # type: ignore[misc]
-        if not self._replay_log:
+        if not self._style_log:
             QMessageBox.information(self, "Style Chain", "No styles applied yet \u2014 nothing to copy.")  # type: ignore[call-arg]
             return
         QApplication.clipboard().setText(self._format_style_chain())

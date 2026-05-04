@@ -1,4 +1,4 @@
-"""MainWindow — application shell wiring all UI components together.
+﻿"""MainWindow — application shell wiring all UI components together.
 
 Layout
 ------
@@ -93,7 +93,7 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self._left_pane_pil: Optional[PILImage] = None       # PIL mirror of left pane for undo
         self._undo_stack: deque[_UndoSnapshot] = deque(maxlen=3)
         self._current_style_name: str = ""                   # display name of selected style
-        self._replay_log: list[dict[str, object]] = []       # {"style": str, "strength": int}
+        self._style_log: list[dict[str, object]] = []       # {"style": str, "strength": int}
 
         self.setWindowTitle("Peter's Picture Stylist")
         self.resize(1200, 750)
@@ -253,7 +253,7 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self._styled_photo_input = None
         self._left_pane_pil = image
         self._clear_undo_stack()
-        self._replay_log = []
+        self._style_log = []
         self.canvas.reset_styled()
         self._save_action.setEnabled(False)
         self.canvas.set_original(self._pil_to_pixmap(image))
@@ -288,7 +288,7 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self._styled_photo_input = None
         self._left_pane_pil = image
         self._clear_undo_stack()
-        self._replay_log = []
+        self._style_log = []
         self.canvas.reset_styled()         # reset right pane + disable Re-Apply/Save
         self._save_action.setEnabled(False)
         # Convert PIL Image → QPixmap for display
@@ -329,8 +329,8 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self._styled_photo_input = snap.styled_photo_input
         self._left_pane_pil = snap.left_pane_pil
         # Pop matching replay log entry
-        if self._replay_log:
-            self._replay_log.pop()
+        if self._style_log:
+            self._style_log.pop()
         # Restore left pane
         left_pil = snap.left_pane_pil if snap.left_pane_pil is not None else self._current_photo
         if left_pil is not None:
@@ -370,7 +370,7 @@ class MainWindow(ApplyController, StyleChainController, QMainWindow):
         self._settings.last_save_dir = str(path.parent)
         self._settings.save()
         # Auto-save replay log alongside the image if enabled and log is non-empty
-        if self._settings.autosave_replay_log and self._replay_log:
+        if self._settings.autosave_style_log and self._style_log:
             yml_path = path.with_suffix(".yml")
             try:
                 yml_path.write_text(self._format_style_chain(), encoding="utf-8")

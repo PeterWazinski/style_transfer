@@ -55,7 +55,7 @@ class AppSettings:
     max_megapixels: float = 20.0  # 0.0 = no limit
     last_open_dir: str = ""
     last_save_dir: str = ""
-    autosave_replay_log: bool = True  # write .yml alongside saved image
+    autosave_style_log: bool = True  # write .yml alongside saved image
 
     # ------------------------------------------------------------------
     # Validation
@@ -96,6 +96,9 @@ class AppSettings:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppSettings":
+        # Silent migration: old key autosave_replay_log → autosave_style_log
+        if "autosave_replay_log" in data and "autosave_style_log" not in data:
+            data = {**data, "autosave_style_log": data["autosave_replay_log"]}
         known: set[str] = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known}
         return cls(**filtered)

@@ -33,37 +33,37 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 
-class ReplayStep(BaseModel):
+class ChainStep(BaseModel):
     """One step in a style-transfer chain."""
 
     style: str = Field(..., min_length=1, description="Display name of the style (case-sensitive)")
     strength: int = Field(..., ge=1, le=300, description="Strength in percent (1–300)")
 
 
-class ReplayLog(BaseModel):
-    """A complete style-transfer chain stored in a replay log file."""
+class StyleChain(BaseModel):
+    """A complete style-transfer chain stored in a style-log file."""
 
     version: int = Field(default=1, description="File format version; must be 1")
     tile_size: int | None = Field(default=None, gt=0, description="Tile size in pixels used during recording")
     tile_overlap: int | None = Field(default=None, gt=0, description="Tile overlap in pixels used during recording")
-    steps: list[ReplayStep] = Field(..., min_length=1, description="Ordered list of style steps")
+    steps: list[ChainStep] = Field(..., min_length=1, description="Ordered list of style steps")
 
     @field_validator("version")
     @classmethod
     def _check_version(cls, v: int) -> int:
         if v != 1:
-            raise ValueError(f"Unsupported replay log version: {v}. Only version 1 is supported.")
+            raise ValueError(f"Unsupported style chain version: {v}. Only version 1 is supported.")
         return v
 
 
-def load_style_chain(path: Path) -> ReplayLog:
+def load_style_chain(path: Path) -> StyleChain:
     """Load and validate a style chain YAML file.
 
     Args:
         path: Path to the ``.yml`` / ``.yaml`` file.
 
     Returns:
-        A validated :class:`ReplayLog` instance.
+        A validated :class:`StyleChain` instance.
 
     Raises:
         ValueError: If the file has a YAML syntax error or fails schema
@@ -77,26 +77,26 @@ def load_style_chain(path: Path) -> ReplayLog:
 
     if not isinstance(raw, dict):
         raise ValueError(
-            f"'{path.name}' is not a valid replay log — expected a YAML mapping at the top level."
+            f"'{path.name}' is not a valid style chain — expected a YAML mapping at the top level."
         )
 
     try:
-        return ReplayLog.model_validate(raw)
+        return StyleChain.model_validate(raw)
     except ValidationError as exc:
         # Flatten Pydantic's verbose error list into a readable message
         messages = "; ".join(
             f"{' → '.join(str(loc) for loc in e['loc'])}: {e['msg']}"
             for e in exc.errors()
         )
-        raise ValueError(f"Invalid replay log '{path.name}': {messages}") from exc
+        raise ValueError(f"Invalid style chain '{path.name}': {messages}") from exc
 
 
 def dump_style_chain(
-    log: ReplayLog,
+    log: StyleChain,
     *,
     created_by: str = "PetersPictureStyler",
 ) -> str:
-    """Serialise a :class:`ReplayLog` to a YAML string.
+    """Serialise a :class:`StyleChain` to a YAML string.
 
     The output starts with a two-line human-readable header comment so the
     file is self-describing when opened in a text editor.
